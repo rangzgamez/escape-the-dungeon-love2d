@@ -195,6 +195,9 @@ function love.load()
     -- Initialize world generator
     world = World:new()
 
+    -- Generate initial platforms
+    world:generateInitialPlatforms(platforms, springboards)
+
     -- Initialize player
     player = Player:new()
 
@@ -203,16 +206,13 @@ function love.load()
 
     transitionManager = TransitionManager:new()
     
-    -- Initialize enemy manager
+    -- Initialize enemy manager (with platforms reference)
     enemyManager = EnemyManager:new()
-    enemyManager:generateInitialEnemies()
+    enemyManager:generateInitialEnemies(platforms) -- Pass platforms here
 
     -- Initialize camera
     camera = Camera:new(player)
     startHeight = player.y
-
-    -- Generate initial platforms
-    world:generateInitialPlatforms(platforms, springboards)
 
     powerUpManager = PowerUpManager:new()
 

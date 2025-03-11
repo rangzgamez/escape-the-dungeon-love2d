@@ -4,33 +4,35 @@ local Events = require("lib/events")
 local Slime = {}
 Slime.__index = Slime
 
-function Slime:new(x, y)
+function Slime:new(x, y, platform)
     local self = setmetatable({}, Slime)
+    
+    -- Store reference to the platform this slime patrols on
+    self.platform = platform
     
     -- Position and dimensions
     self.x = x
-    self.y = y
     self.width = 32
     self.height = 20
-    
+    self.y = platform and (platform.y - self.height) or y -- Position on top of platform
+
     -- Movement properties
-    self.speed = 40
-    self.jumpStrength = 300
+    self.patrolSpeed = 40
     self.xVelocity = 0
     self.yVelocity = 0
-    self.gravity = 800
+    self.gravity = 800 -- Only used when stunned
     
-    -- Behavior
-    self.state = "idle"  -- idle, jumping, stunned
+    -- Patrol behavior
+    self.state = "patrolling"  -- patrolling or stunned
+    self.direction = love.math.random() > 0.5 and 1 or -1 -- Random initial direction
+    self.directionChangeTimer = love.math.random(2, 5) -- Random time until direction change
+    
+    -- Stunned state properties
     self.stunnedTime = 0
     self.stunnedDuration = 2 -- How long slime stays stunned when hit
-    self.jumpTimer = love.math.random(1, 3)
-    self.jumpCooldown = 0.5 -- Time after landing before jumping again
-    self.waitTimer = self.jumpCooldown -- Timer for waiting on ground
     
     -- Detection properties
-    self.detectionRadius = 200 -- How far the slime can "see" the player
-    self.aggroRange = 300 -- Range at which slime becomes aggressive
+    self.detectionRadius = 150 -- How far the slime can "see" the player
     self.aggro = false -- Whether slime is targeting player
     
     -- Animation properties
@@ -49,7 +51,7 @@ function Slime:update(dt, player)
     -- Update animation
     self:updateAnimation(dt)
     
-    -- Update drip timer
+    -- Update drip timer for visual effects
     self.dripTimer = self.dripTimer - dt
     if self.dripTimer <= 0 then
         self.dripTimer = love.math.random(0.5, 2)
@@ -61,11 +63,9 @@ function Slime:update(dt, player)
         })
     end
     
-    -- Check for player detection
+    -- Check for player detection to determine aggro state
     if player and self:canDetectPlayer(player) then
-        -- Only become aggressive if player is close enough
-        local distToPlayer = self:distanceToPlayer(player)
-        self.aggro = distToPlayer < self.aggroRange
+        self.aggro = true
     else
         self.aggro = false
     end
@@ -73,15 +73,18 @@ function Slime:update(dt, player)
     -- State machine for slime behavior
     if self.state == "stunned" then
         self:updateStunned(dt)
-    elseif self.state == "jumping" then
-        self:updateJumping(dt)
     else
-        self:updateIdle(dt, player)
+        self:updatePatrolling(dt, player)
     end
     
     -- Apply movement
     self.x = self.x + self.xVelocity * dt
     self.y = self.y + self.yVelocity * dt
+    
+    -- If not stunned, ensure slime stays on platform
+    if self.state ~= "stunned" and self.platform then
+        self.y = self.platform.y - self.height -- Keep aligned to platform
+    end
 end
 
 function Slime:updateAnimation(dt)
@@ -95,30 +98,15 @@ function Slime:updateAnimation(dt)
         self.colorPulseDirection = 1
     end
     
-    -- Handle squish/stretch animation
-    if self.state == "jumping" then
-        -- When jumping, stretch vertically
-        if self.yVelocity < 0 then  -- Moving up
-            self.squishFactor = math.min(self.squishFactor + dt * 2, 1.3)
-            self.squishDirection = -1  -- Stretching
-        else  -- Falling down
-            self.squishFactor = math.max(self.squishFactor - dt * 2, 0.7)
-            self.squishDirection = 1  -- Squishing
-        end
-    elseif self.state == "idle" then
-        -- When idle, gently pulse
-        if self.squishDirection == 0 then
-            self.squishDirection = 1  -- Start squishing
-        end
-        
-        self.squishFactor = self.squishFactor + self.squishDirection * dt * 0.5
-        
-        if self.squishFactor > 1.1 then
-            self.squishFactor = 1.1
-            self.squishDirection = -1
-        elseif self.squishFactor < 0.9 then
-            self.squishFactor = 0.9
-            self.squishDirection = 1
+    -- Handle squish/stretch animation based on state and movement
+    if self.state == "patrolling" then
+        -- When moving, squish slightly with movement
+        if self.xVelocity ~= 0 then
+            -- Oscillate squish based on movement
+            self.squishFactor = 1 + 0.1 * math.sin(love.timer.getTime() * 5)
+        else
+            -- Return to normal when not moving
+            self.squishFactor = 1
         end
     elseif self.state == "stunned" then
         -- When stunned, flatten
@@ -134,102 +122,52 @@ function Slime:updateStunned(dt)
     
     -- Recover from stunned state
     if self.stunnedTime <= 0 then
-        self.state = "idle"
+        self.state = "patrolling"
         -- Reset velocity when recovering
         self.xVelocity = 0
         self.yVelocity = 0
-        self.jumpTimer = love.math.random(1, 3)  -- Set timer for next jump
-    end
-end
-
-function Slime:updateJumping(dt)
-    -- Apply gravity
-    self.yVelocity = self.yVelocity + self.gravity * dt
-    
-    -- Check if slime is falling
-    if self.yVelocity > 0 then
-        -- Check for landing
-        -- This is a placeholder - in the real game you'd check for platform collisions
-        -- For now, we'll simulate landing when reaching a certain height
-        if self.y > 600 then  -- Arbitrary ground level for testing
-            self:land()
+        
+        -- If we have a platform, return to it
+        if self.platform then
+            self.y = self.platform.y - self.height
         end
     end
 end
 
-function Slime:land()
-    self.state = "idle"
-    self.yVelocity = 0
-    self.waitTimer = self.jumpCooldown  -- Wait a bit before jumping again
-    
-    -- Squish effect on landing
-    self.squishFactor = 0.6
-    self.squishDirection = 1
-    
-    -- Fire landed event
-    Events.fire("slimeLanded", {
-        x = self.x + self.width/2,
-        y = self.y + self.height
-    })
-end
-
-function Slime:updateIdle(dt, player)
-    -- Wait after landing
-    if self.waitTimer > 0 then
-        self.waitTimer = self.waitTimer - dt
-        return
+function Slime:updatePatrolling(dt, player)
+    -- Direction change timer
+    self.directionChangeTimer = self.directionChangeTimer - dt
+    if self.directionChangeTimer <= 0 then
+        -- Randomly change direction
+        self.direction = self.direction * -1
+        self.directionChangeTimer = love.math.random(2, 5)
     end
     
-    -- Update jump timer
-    self.jumpTimer = self.jumpTimer - dt
-    
-    if self.jumpTimer <= 0 then
-        -- Prepare to jump!
-        self:jump(player)
-    end
-end
-
-function Slime:jump(player)
-    self.state = "jumping"
-    self.yVelocity = -self.jumpStrength
-    
-    -- Determine jump direction
-    if player and self.aggro then
-        -- Aggressive jump - aim toward player
-        local playerCenterX = player.x + player.width/2
-        local slimeCenterX = self.x + self.width/2
-        
-        -- Calculate direction and normalize
-        local direction = playerCenterX - slimeCenterX
-        local distance = math.abs(direction)
-        
-        -- Scale jump strength based on distance
-        local jumpStrength = math.min(distance / 200, 1) * self.speed * 1.5
-        
-        -- Apply horizontal velocity toward player
-        if distance > 0 then
-            self.xVelocity = direction / distance * jumpStrength
+    -- If we have a platform, check for edges
+    if self.platform then
+        -- Check if at left edge of platform
+        if self.x <= self.platform.x and self.direction < 0 then
+            self.direction = 1
+            self.x = self.platform.x -- Ensure slime stays on platform
         end
         
-        -- Fire event for aggressive jump
-        Events.fire("slimeAggroJump", {
-            x = self.x + self.width/2,
-            y = self.y
-        })
+        -- Check if at right edge of platform
+        if self.x + self.width >= self.platform.x + self.platform.width and self.direction > 0 then
+            self.direction = -1
+            self.x = self.platform.x + self.platform.width - self.width -- Ensure slime stays on platform
+        end
+    end
+    
+    -- Set horizontal velocity based on direction and state
+    if self.aggro then
+        -- Move faster when player is detected
+        self.xVelocity = self.direction * self.patrolSpeed * 1.5
     else
-        -- Normal random jump
-        self.xVelocity = love.math.random(-self.speed/2, self.speed/2)
+        self.xVelocity = self.direction * self.patrolSpeed
     end
     
-    -- Reset squish animation
-    self.squishFactor = 1.3  -- Start stretched for jump
-    self.squishDirection = -1
-    
-    -- Fire jump event
-    Events.fire("slimeJump", {
-        x = self.x + self.width/2,
-        y = self.y
-    })
+    -- No vertical velocity while patrolling
+    self.yVelocity = 0
 end
 
 function Slime:canDetectPlayer(player)
@@ -342,15 +280,7 @@ function Slime:draw()
             pupilOffsetX = eyeSize * 0.3 * (self.xVelocity > 0 and 1 or -1)
         elseif self.xVelocity > 5 then
             pupilOffsetX = eyeSize * 0.3
-        elseif self.xVelocity < -5 then
-            pupilOffsetX = -eyeSize * 0.3
-        end
-        
-        -- Look up/down based on vertical velocity
-        if self.yVelocity < -5 then
-            pupilOffsetY = -eyeSize * 0.2
-        elseif self.yVelocity > 5 then
-            pupilOffsetY = eyeSize * 0.2
+OffsetX = -eyeSize * 0.3
         end
         
         -- Draw the pupils
@@ -365,6 +295,14 @@ function Slime:draw()
         local dripHeight = love.math.random(3, 8)
         local dripX = centerX + love.math.random(-drawWidth/3, drawWidth/3)
         love.graphics.rectangle("fill", dripX, centerY + drawHeight/4, dripWidth, dripHeight)
+    end
+    
+    -- Debug: draw platform boundaries if in debug mode
+    if false then -- Set to true to enable debugging
+        if self.platform then
+            love.graphics.setColor(1, 0, 0, 0.5)
+            love.graphics.rectangle("line", self.platform.x, self.platform.y, self.platform.width, self.platform.height)
+        end
     end
 end
 

@@ -17,14 +17,21 @@ function EnemyManager:new()
     self.minEnemyY = 0
     self.lastEnemyY = love.graphics.getHeight()
     self.enemySpawnInterval = 200 -- Vertical distance between enemy spawns
-    self.batChance = 0.8 -- 80% chance to spawn a bat
+    self.batChance = 0.7 -- 70% chance to spawn a bat (reduced to make room for slimes)
+    self.slimeChance = 0.4 -- 40% chance to spawn a slime
     self.screenWidth = love.graphics.getWidth()
     self.generationDistance = 1000 -- Generate enemies this far ahead of camera
+    
+    -- Store platforms reference (will be set in update)
+    self.platforms = nil
 
     return self
 end
 
-function EnemyManager:generateInitialEnemies()
+function EnemyManager:generateInitialEnemies(platforms)
+    -- Store platforms reference
+    self.platforms = platforms
+    
     -- Start with a few enemies
     for i = 1, 5 do
         self:generateEnemy()
@@ -36,17 +43,30 @@ function EnemyManager:generateEnemy()
     local enemyY = self.lastEnemyY - self.enemySpawnInterval + love.math.random(-50, 50)
     local enemyX = love.math.random(50, self.screenWidth - 50)
     
-    -- Create a bat
+    -- Create a bat (flying enemy)
     if love.math.random() < self.batChance then
         local bat = Bat:new(enemyX, enemyY)
         table.insert(self.bats, bat)
         table.insert(self.enemies, bat)
     end
 
-    if love.math.random() < 0.3 then  -- 30% chance for slime
-        local slime = Slime:new(enemyX, enemyY)
-        table.insert(self.slimes, slime)
-        table.insert(self.enemies, slime)
+    -- Create a slime (platform-bound enemy)
+    -- Only spawn slimes if we have platforms
+    if self.platforms and #self.platforms > 0 and love.math.random() < self.slimeChance then
+        -- Find a suitable platform for the slime
+        local platformIndex = self:findPlatformNearY(enemyY)
+        
+        if platformIndex then
+            local platform = self.platforms[platformIndex]
+            
+            -- Place slime on the platform
+            local slimeX = platform.x + love.math.random(10, platform.width - 40) -- Keep away from edges
+            local slimeY = platform.y - 20 -- Height of slime
+            
+            local slime = Slime:new(slimeX, slimeY, platform)
+            table.insert(self.slimes, slime)
+            table.insert(self.enemies, slime)
+        end
     end
     
     -- Update the highest enemy position
@@ -54,7 +74,55 @@ function EnemyManager:generateEnemy()
     self.minEnemyY = math.min(self.minEnemyY, enemyY)
 end
 
+-- Find a platform close to a specific Y coordinate
+function EnemyManager:findPlatformNearY(targetY)
+    if not self.platforms or #self.platforms == 0 then
+        return nil
+    end
+    
+    -- Look for platforms within a certain range of the target Y
+    local yRange = 100 -- How far to search
+    local candidates = {}
+    
+    for i, platform in ipairs(self.platforms) do
+        if math.abs(platform.y - targetY) < yRange and platform.width >= 60 then
+            -- Only use platforms wide enough for slimes
+            table.insert(candidates, i)
+        end
+    end
+    
+    if #candidates > 0 then
+        -- Return a random platform from suitable candidates
+        return candidates[love.math.random(1, #candidates)]
+    end
+    
+    -- If no platforms in range, find the closest one
+    local closestDist = math.huge
+    local closestIndex = nil
+    
+    for i, platform in ipairs(self.platforms) do
+        if platform.width >= 60 then
+            local dist = math.abs(platform.y - targetY)
+            if dist < closestDist then
+                closestDist = dist
+                closestIndex = i
+            end
+        end
+    end
+    
+    return closestIndex
+end
+
 function EnemyManager:update(dt, player, camera)
+    -- We rely on platforms being set during initialization
+    -- This is a safety check
+    if not self.platforms or #self.platforms == 0 then
+        -- Try to get platforms reference from main
+        if _G.platforms then
+            self.platforms = _G.platforms
+        end
+    end
+    
     -- Generate new enemies if needed
     while self.minEnemyY > camera.y - self.generationDistance do
         self:generateEnemy()
@@ -81,6 +149,13 @@ function EnemyManager:cleanupEnemies(camera)
                 for j = #self.bats, 1, -1 do
                     if self.bats[j] == enemy then
                         table.remove(self.bats, j)
+                        break
+                    end
+                end
+            elseif enemy.platform then -- It's a slime
+                for j = #self.slimes, 1, -1 do
+                    if self.slimes[j] == enemy then
+                        table.remove(self.slimes, j)
                         break
                     end
                 end
@@ -133,11 +208,14 @@ function EnemyManager:draw()
         enemy:draw()
     end
     
-    -- Debug: Draw detection radius for bats
+    -- Debug: Draw detection radius for enemies
     if false then -- Set to true to enable debug visualization
         love.graphics.setColor(1, 0, 0, 0.2)
         for _, bat in ipairs(self.bats) do
             love.graphics.circle("line", bat.x + bat.radius, bat.y + bat.radius, bat.detectionRadius)
+        end
+        for _, slime in ipairs(self.slimes) do
+            love.graphics.circle("line", slime.x + slime.width/2, slime.y + slime.height/2, slime.detectionRadius)
         end
     end
 end
