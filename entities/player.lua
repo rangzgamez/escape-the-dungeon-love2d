@@ -1,7 +1,7 @@
 -- player.lua - Player class for Love2D Vertical Jumper (FSM version)
 local Events = require("lib/events")
 local StateMachine = require("states/stateMachine")
-local IdleState = require("states/idleState")
+local GroundedState = require("states/groundedState")
 local FallingState = require("states/fallingState")
 local DashingState = require("states/dashingState")
 
@@ -86,27 +86,21 @@ function Player:new(x, y)
     self.stateMachine = StateMachine:new()
     
     -- Add states to the state machine
-    self.stateMachine:add("Idle", IdleState:new(self))
+    self.stateMachine:add("Grounded", GroundedState:new(self))
     self.stateMachine:add("Falling", FallingState:new(self))
     self.stateMachine:add("Dashing", DashingState:new(self))
     
-    -- Start in the idle state (on ground)
-    self.stateMachine:change("Idle")
+    -- Start in the grounded state (on ground)
+    self.stateMachine:change("Falling")
 
     return self
-end
-
--- Change to a different state
-function Player:changeState(stateName, ...)
-    return self.stateMachine:change(stateName, ...)
 end
 
 function Player:onDragEnd(data)
     -- Only perform action if the drag was significant
     if data.isSignificantDrag then
         -- Handle the jump/dash based on current state
-        print(self.stateMachine.current:getName());
-        self.stateMachine.current:onDragEnd()
+        self.stateMachine.current:onDragEnd(data)
 
     end
 end

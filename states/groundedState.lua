@@ -1,23 +1,22 @@
--- states/idleState.lua - Idle/Ground state for the player
+-- states/GroundedState.lua - Grounded/Ground state for the player
 
 local BaseState = require("states/baseState")
-local IdleState = setmetatable({}, BaseState)
-IdleState.__index = IdleState
+local GroundedState = setmetatable({}, BaseState)
+GroundedState.__index = GroundedState
 
-function IdleState:new(player)
+function GroundedState:new(player)
     local self = BaseState.new(self, player)
     return self
 end
 
--- Update IdleState:enter to reset midair jumps when landing
-function IdleState:enter(prevState)
+-- Update GroundedState:enter to reset midair jumps when landing
+function GroundedState:enter(prevState)
     -- Call parent method to fire state change event
     BaseState.enter(self, prevState)
-    
     -- Reset velocity and set onGround
     self.player.xVelocity = 0
+    self.player.yVelocity = 0
     self.player.onGround = true
-    
     -- Reset midair jumps when landing
     self.player:refreshJumps()
     
@@ -30,21 +29,15 @@ function IdleState:enter(prevState)
     end
 end
 
-function IdleState:onDragEnd(data)
+function GroundedState:onDragEnd(data)
     print(data)
-    self.player.stateMachine:change("Dash", data)
+    self.player.stateMachine:change("Dashing", data)
 end
-function IdleState:update(dt)
+function GroundedState:update(dt)
     -- Handle horizontal movement (keyboard controls)
     self.player.xVelocity = 0
-    
-    if love.keyboard.isDown("left") or love.keyboard.isDown("a") then
-        self.player.xVelocity = -self.player.horizontalSpeed
-    end
-    if love.keyboard.isDown("right") or love.keyboard.isDown("d") then
-        self.player.xVelocity = self.player.horizontalSpeed
-    end
-    
+    self.player.yVelocity = 0
+
     -- Apply velocities to position
     self.player.x = self.player.x + self.player.xVelocity * dt
         
@@ -54,12 +47,12 @@ function IdleState:update(dt)
     end
 end
 
-function IdleState:onLeftGround()
+function GroundedState:onLeftGround()
     -- Change to falling state
     self.player.stateMachine:change("Falling")
 end
 
-function IdleState:checkHorizontalBounds(screenWidth)
+function GroundedState:checkHorizontalBounds(screenWidth)
     -- Left boundary
     if self.player.x < 0 then
         self.player.x = 0
@@ -73,42 +66,21 @@ function IdleState:checkHorizontalBounds(screenWidth)
     end
 end
 
-function IdleState:handleCollision(enemy)
-    print('this shouldnt be happening')
-    local result = {
-        enemyHit = false,
-        playerHit = false
-    }
-    
-    -- Default collision behavior if state didn't handle it
-    if enemy.state ~= "stunned" then
-        -- Enemy hits player - player takes damage
-        self.player:takeDamage()
-        
-        -- Reset combo when hit
-        self.player:resetCombo()
-        
-        result.playerHit = true
-    end
-    
-    return result
-end
-
-function IdleState:enemyCollision(enemy)
+function GroundedState:enemyCollision(enemy)
     -- Enemy hits player - player takes damage
     self.player:takeDamage()
     -- Reset combo when hit
     self.player:resetCombo()
 end
 
-function IdleState:draw()
+function GroundedState:draw()
     -- Draw player in green when on ground
     love.graphics.setColor(0, 1, 0)
     love.graphics.rectangle("fill", self.player.x, self.player.y, self.player.width, self.player.height)
 end
 
-function IdleState:getName()
-    return "Idle"
+function GroundedState:getName()
+    return "Grounded"
 end
 
-return IdleState
+return GroundedState

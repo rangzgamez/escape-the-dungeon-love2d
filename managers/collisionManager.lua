@@ -27,19 +27,30 @@ end
 function CollisionManager:handleCollisions(dt)
     local wasOnGround = self.player.onGround
     local playerHitPlatform = false
-    
+
     -- Store player's position before movement
     local prevX = self.player.x - self.player.xVelocity * dt
     local prevY = self.player.y - self.player.yVelocity * dt
-    
+
     -- Check platform collisions
     playerHitPlatform = self:checkPlatformCollisions(dt, prevX, prevY)
-    
+
     -- Handle player ground state based on collision results
     self:updatePlayerGroundState(playerHitPlatform, wasOnGround)
-    
+
     -- Handle springboard collisions separately
     self:handleSpringboardCollisions(dt, prevX, prevY)
+end
+
+function CollisionManager:updatePlayerGroundState(playerHitPlatform, wasOnGround)
+    if playerHitPlatform and not wasOnGround then
+        -- Player just landed on a platform
+        self.player:landOnGround()
+        
+    elseif wasOnGround and not playerHitPlatform then
+        -- Player just left the ground
+        self.player:leftGround()
+    end
 end
 
 function CollisionManager:checkPlatformCollisions(dt, prevX, prevY)
@@ -62,9 +73,6 @@ function CollisionManager:simplePlatformCollision(prevY)
         if self:checkCollision(self.player, platform) then
             -- Only check for collision from above (one-way platforms)
             if prevY + self.player.height <= platform.y and self.player.yVelocity >= 0 then
-                self.player.y = platform.y - self.player.height
-                self.player.yVelocity = 0
-                self.player.onGround = true
                 return true
             end
         end
@@ -95,9 +103,6 @@ function CollisionManager:continuousPlatformCollision(dt, prevX, prevY, playerSp
             if self:checkCollision(testPlayer, platform) then
                 -- Only check for collision from above (one-way platforms)
                 if prevY + self.player.height <= platform.y then
-                    self.player.y = platform.y - self.player.height
-                    self.player.yVelocity = 0
-                    self.player.onGround = true
                     return true
                 end
             end
@@ -106,22 +111,6 @@ function CollisionManager:continuousPlatformCollision(dt, prevX, prevY, playerSp
     return false
 end
 
-function CollisionManager:updatePlayerGroundState(playerHitPlatform, wasOnGround)
-    if playerHitPlatform and not wasOnGround then
-        -- Player just landed on a platform
-        self.player:landOnGround()
-        
-        -- Fire landed event (for particles etc)
-        Events.fire("playerLanded", {
-            x = self.player.x,
-            y = self.player.y
-        })
-    elseif wasOnGround and not playerHitPlatform then
-        -- Player just left the ground
-        self.player.onGround = false
-        self.player:leftGround()
-    end
-end
 function CollisionManager:handleSpringboardCollisions(dt, prevX, prevY)
     -- Calculate player movement speed
     local playerSpeed = math.sqrt(self.player.xVelocity^2 + self.player.yVelocity^2)

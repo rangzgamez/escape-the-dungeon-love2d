@@ -17,9 +17,9 @@ end
 function DashingState:enter(prevState, data)
     -- Call parent method to fire state change event
     BaseState.enter(self, prevState)
-
+    self.player.onGround = false
     -- only deduct midairJumps if dashing midair
-    if not prevState:getName() == 'Idle' then
+    if not prevState:getName() == 'Grounded' then
         self.player.deductJump()
     end
 
@@ -36,7 +36,7 @@ function DashingState:enter(prevState, data)
     self.events.fire("playerDashStarted", {
         power = data.power,
         direction = data.direction,
-        fromGround = prevState:getName() == 'Idle'
+        fromGround = prevState:getName() == 'Grounded'
     })
 end
 
@@ -54,7 +54,7 @@ function DashingState:update(dt)
     end
     
     -- Update dash timer
-    self.player.dashTimeLeft = self.player.dashTimeLeft - dt
+    self.dashTimeLeft = self.dashTimeLeft - dt
     
     -- Apply dash velocity
     self.player.x = self.player.x + self.dashDirection.x * self.player.dashSpeed * dt
@@ -67,7 +67,7 @@ function DashingState:update(dt)
         self.player.yVelocity = 0 -- Reset vertical velocity for straight drop
         
         -- Switch to falling state
-        self.player:changeState("Falling")
+        self.player.stateMachine:change("Falling")
     end
 end
 
@@ -92,35 +92,6 @@ function DashingState:checkHorizontalBounds(screenWidth)
         end
     end
 end
-
--- function DashingState:handleCollision(enemy)
---     local result = {
---         enemyHit = false,
---         playerHit = false
---     }
-    
---     -- Only stun enemy if not already stunned
---     enemy:stun()
---     result.enemyHit = true
-    
---     -- Refresh the player's dash
---     self.player:refreshJumps()
-    
---     -- Increment combo counter
---     self.player:incrementCombo()
-    
---     -- Fire enemy kill event for other systems to handle
---     self.events.fire("enemyKill", {
---         comboCount = self.player.comboCount,
---         enemy = enemy
---     })
-    
---     return result
-    
-    
---     -- No collision handling done
---     return false
--- end
 
 function DashingState:enemyCollision(enemy)
     -- Player dashing into enemy - stun the enemy
