@@ -28,6 +28,13 @@ function Camera:new(player)
     return self
 end
 
+function Camera:clearShake()
+    self.shakeAmount = 0
+    self.shakeDuration = 0
+    self.shakeOffsetX = 0
+    self.shakeOffsetY = 0
+end
+
 -- Event handler for player dash
 function Camera:onPlayerDash(data)
     local power = data and data.power or 1
@@ -96,9 +103,7 @@ function Camera:updateShake(dt)
         
         -- Reset shake when duration ends
         if self.shakeDuration <= 0 then
-            self.shakeAmount = 0
-            self.shakeOffsetX = 0
-            self.shakeOffsetY = 0
+            self:clearShake()
         end
     end
 end

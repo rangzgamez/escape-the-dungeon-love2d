@@ -23,10 +23,8 @@ function DashingState:enter(prevState)
     
     -- Fire dash started event with power and direction
     local dragDistance = math.sqrt(self.player.dragVector.x^2 + self.player.dragVector.y^2)
-    local dashPower = math.min(dragDistance, self.player.maxDragDistance) / self.player.maxDragDistance
     
     self.events.fire("playerDashStarted", {
-        power = dashPower,
         direction = self.player.dashDirection,
         fromGround = prevState and prevState:getName() == "Idle"
     })
@@ -55,7 +53,7 @@ function DashingState:update(dt)
     -- End dash when timer runs out
     if self.player.dashTimeLeft <= 0 then
         -- Set vertical velocity to 0 for instant drop
-        self.player.xVelocity = self.player.dashDirection.x * self.player.dashSpeed * 0.2 -- Keep a small horizontal momentum
+        self.player.xVelocity = 0  --self.player.dashDirection.x * self.player.dashSpeed * 0.2 -- Keep a small horizontal momentum
         self.player.yVelocity = 0 -- Reset vertical velocity for straight drop
         
         -- Switch to falling state

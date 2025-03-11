@@ -35,7 +35,7 @@ function DraggingState:exit()
 end
 
 function DraggingState:update(dt)
-    -- Update trajectory - don't update position in dragging state
+    -- Update trajectory -
     self:calculateTrajectory()
 end
 

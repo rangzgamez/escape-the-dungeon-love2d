@@ -75,13 +75,15 @@ function TimeManager:getTimeScale()
 end
 -- Set time scale (optionally with smooth transition)
 function TimeManager:setTimeScale(scale, smooth)
-    if smooth then
-        -- Store as target and transition gradually in update
-        self.targetTimeScale = scale
-    else
-        -- Set immediately
-        self.timeScale = scale
-    end
+    -- if smooth then
+    -- let's only apply smoothing on BIG hits. so like, boss kills
+    -- this will be a TODO
+    --     -- Store as target and transition gradually in update
+    --     self.targetTimeScale = scale
+    -- else
+     -- Set immediately
+    self.timeScale = scale
+    --end
 end
 
 return TimeManager

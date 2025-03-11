@@ -32,13 +32,9 @@ local score = 0
 local gameOver = false
 local distanceClimbed = 0
 local startHeight = 0
-local timeScale = 1      -- Time scale factor (1 = normal speed, < 1 = slow motion)
-local freezeTimer = 0    -- Timer for screen freeze effect
-local freezeDuration = 0 -- How long the freeze lasts
 
 -- Mouse/touch tracking variables
 local isDragging = false
-local dragStartX, dragStartY = nil, nil
 
 -- Game settings
 local settingsVisible = true  -- Toggle for settings menu visibility
@@ -53,12 +49,11 @@ local function setupEventListeners()
     
     -- Time effects for dragging
     Events.on("playerDragStart", function(data)
+        camera:clearShake()
         isDragging = true
         if pauseWhileDragging then
-            previousTimeScale = timeManager:getTimeScale()
             timeManager:setTimeScale(0)
         elseif slowDownWhileDragging then
-            previousTimeScale = timeManager:getTimeScale()
             timeManager:setTimeScale(slowDownFactor)
         end
     end)
@@ -66,7 +61,7 @@ local function setupEventListeners()
     Events.on("playerDragEnd", function(data)
         isDragging = false
         if pauseWhileDragging or slowDownWhileDragging then
-            timeManager:setTimeScale(previousTimeScale, true)
+            timeManager:setTimeScale(1)
         end
     end)
     
@@ -81,7 +76,7 @@ local function setupEventListeners()
     
     Events.on("playerDashStarted", function(data)
         -- Camera shake
-        camera:shake(3 * data.power, 0.2)
+        camera:shake(3, 0.2)
         
         -- Particle effects
         if data.fromGround then
@@ -157,7 +152,8 @@ local function setupEventListeners()
     Events.on("enemyKill", function(data)
         local comboCount = data.comboCount or 0
         local enemy = data.enemy
-        
+        camera:onEnemyKill(data)
+        timeManager:onEnemyKill(data)
         -- Create impact effect
         if enemy and particleManager then
             particleManager:createImpactEffect(
