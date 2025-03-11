@@ -203,7 +203,7 @@ function love.update(dt)
     -- Store original dt for animations that should run regardless of pause
     local realDt = dt
 
-    inputManager:update(dt, camera)
+    inputManager:update(dt, player, camera)
 
     -- Handle player dragging regardless of pause state
     -- Handle player dragging regardless of pause state
@@ -475,7 +475,7 @@ function love.draw()
     love.graphics.pop()
 
     -- Draw input visualizations (trajectory, etc.)
-    inputManager:draw()
+    inputManager:draw(camera)
 
     -- Draw UI elements (not affected by camera)
     love.graphics.setColor(1, 1, 1)

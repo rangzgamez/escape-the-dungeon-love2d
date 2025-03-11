@@ -73,6 +73,8 @@ function CollisionManager:simplePlatformCollision(prevY)
         if self:checkCollision(self.player, platform) then
             -- Only check for collision from above (one-way platforms)
             if prevY + self.player.height <= platform.y and self.player.yVelocity >= 0 then
+                self.player.y = platform.y - self.player.height
+                self.player.yVelocity = 0
                 return true
             end
         end
@@ -103,6 +105,8 @@ function CollisionManager:continuousPlatformCollision(dt, prevX, prevY, playerSp
             if self:checkCollision(testPlayer, platform) then
                 -- Only check for collision from above (one-way platforms)
                 if prevY + self.player.height <= platform.y then
+                    self.player.y = platform.y - self.player.height
+                    self.player.yVelocity = 0
                     return true
                 end
             end

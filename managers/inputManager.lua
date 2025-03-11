@@ -58,6 +58,10 @@ function InputManager:startDrag(x, y, camera)
         return false -- Already dragging
     end
     
+    -- Store original screen coordinates for drawing
+    self.screenStartX = x
+    self.screenStartY = y
+    
     -- Adjust for camera position if provided
     local adjustedY = y
     if camera then
@@ -65,17 +69,19 @@ function InputManager:startDrag(x, y, camera)
     end
     
     self.isDragging = true
-    self.dragStartX = x
-    self.dragStartY = adjustedY
+    self.dragStartX = x  -- This should remain in screen coordinates
+    self.dragStartY = y  -- This should remain in screen coordinates
+    self.worldDragStartY = adjustedY  -- Store the world coordinate separately
     self.currentDragX = x
-    self.currentDragY = adjustedY
+    self.currentDragY = y  -- Keep in screen coordinates
+    self.worldCurrentDragY = adjustedY  -- Store world coordinate
     self.dragVector = {x = 0, y = 0}
     self.trajectoryPoints = {}
     
     -- Fire event for drag start
     Events.fire("dragStart", {
         x = x,
-        y = adjustedY,
+        y = adjustedY,  -- Use world coordinate for game logic
         screenY = y
     })
     
@@ -102,16 +108,21 @@ function InputManager:updateDrag(x, y, camera)
         return false -- Not dragging
     end
     
+    -- Store screen coordinates for drawing
+    self.currentDragX = x
+    self.currentDragY = y
+    
     -- Adjust for camera position if provided
     local adjustedY = y
     if camera then
         adjustedY = y + camera.y - love.graphics.getHeight() / 2
     end
     
-    self.currentDragX = x
-    self.currentDragY = adjustedY
-    self.dragVector.x = self.currentDragX - self.dragStartX
-    self.dragVector.y = self.currentDragY - self.dragStartY
+    self.worldCurrentDragY = adjustedY
+    
+    -- Update drag vector using world coordinates for gameplay calculations
+    self.dragVector.x = x - self.dragStartX
+    self.dragVector.y = adjustedY - self.worldDragStartY
     
     -- Fire event for drag update
     Events.fire("dragUpdate", {
@@ -124,10 +135,15 @@ function InputManager:updateDrag(x, y, camera)
     return true
 end
 
+-- In the endDrag method, update the firing of the dragEnd event
 function InputManager:endDrag(x, y, camera)
     if not self.isDragging then
         return false -- Not dragging
     end
+    
+    -- Store screen coordinates for drawing
+    self.currentDragX = x
+    self.currentDragY = y
     
     -- Adjust for camera position if provided
     local adjustedY = y
@@ -135,11 +151,11 @@ function InputManager:endDrag(x, y, camera)
         adjustedY = y + camera.y - love.graphics.getHeight() / 2
     end
     
-    -- Update final position
-    self.currentDragX = x
-    self.currentDragY = adjustedY
-    self.dragVector.x = self.currentDragX - self.dragStartX
-    self.dragVector.y = self.currentDragY - self.dragStartY
+    self.worldCurrentDragY = adjustedY
+    
+    -- Update drag vector
+    self.dragVector.x = x - self.dragStartX
+    self.dragVector.y = adjustedY - self.worldDragStartY
     
     -- Calculate drag distance
     local dragDistance = math.sqrt(self.dragVector.x^2 + self.dragVector.y^2)
@@ -155,7 +171,12 @@ function InputManager:endDrag(x, y, camera)
         power = math.min(dragDistance, self.maxDragDistance) / self.maxDragDistance
     end
     
-    -- Fire event for drag end
+    -- Update trajectory one last time to ensure it matches the final drag
+    if self.targetPlayer then
+        self:calculateTrajectory()
+    end
+    
+    -- Fire event for drag end with updated direction
     Events.fire("dragEnd", {
         x = x,
         y = adjustedY,
@@ -164,17 +185,20 @@ function InputManager:endDrag(x, y, camera)
         distance = dragDistance,
         direction = direction,
         power = power,
-        isSignificantDrag = isSignificantDrag
+        isSignificantDrag = isSignificantDrag,
+        trajectoryPoints = self.trajectoryPoints
     })
     
     -- Reset drag state
     self.isDragging = false
     self.dragStartX = nil
     self.dragStartY = nil
+    self.worldDragStartY = nil
     self.currentDragX = nil
     self.currentDragY = nil
+    self.worldCurrentDragY = nil
     self.dragVector = {x = 0, y = 0}
-    self.trajectoryPoints = {}
+    -- Keep trajectory points until next drag
     self.targetPlayer = nil
     
     return isSignificantDrag
@@ -201,7 +225,7 @@ function InputManager:cancelDrag()
     return true
 end
 
--- Calculate trajectory based on drag direction and player properties
+-- In the calculateTrajectory method, ensure we're using world coordinates
 function InputManager:calculateTrajectory()
     -- Clear previous trajectory
     self.trajectoryPoints = {}
@@ -221,6 +245,9 @@ function InputManager:calculateTrajectory()
         return
     end
     
+    -- Store the normalized direction for dash logic
+    self.dashDirection = direction
+    
     -- Calculate power based on drag distance
     local power = math.min(dragDistance, self.maxDragDistance) / self.maxDragDistance
     
@@ -238,15 +265,15 @@ function InputManager:calculateTrajectory()
     for i = 0, dashPoints do
         -- Use even spacing along the dash path
         local t = (i / dashPoints) * dashDuration
-        local pointX = startX + direction.x * self.playerDashSpeed * t
-        local pointY = startY + direction.y * self.playerDashSpeed * t
+        local pointX = startX + direction.x * self.playerDashSpeed * power * t
+        local pointY = startY + direction.y * self.playerDashSpeed * power * t
         
         table.insert(self.trajectoryPoints, {x = pointX, y = pointY})
     end
     
     -- Calculate dash end position
-    local dashEndX = startX + direction.x * self.playerDashSpeed * dashDuration
-    local dashEndY = startY + direction.y * self.playerDashSpeed * dashDuration
+    local dashEndX = startX + direction.x * self.playerDashSpeed * power * dashDuration
+    local dashEndY = startY + direction.y * self.playerDashSpeed * power * dashDuration
     
     -- Second half of points show the falling path
     local fallPoints = 10
@@ -340,12 +367,12 @@ function InputManager:touchreleased(id, x, y, camera)
 end
 
 -- Draw drag visualization (trajectory, etc.)
-function InputManager:draw()
+function InputManager:draw(camera)
     if not self.isDragging then
         return
     end
     
-    -- Draw drag line
+    -- Draw drag line using screen coordinates
     love.graphics.setColor(1, 1, 1, 0.6)
     love.graphics.line(
         self.dragStartX, 
@@ -393,39 +420,48 @@ function InputManager:draw()
         )
     end
     
-    -- Draw trajectory points if available
-    if #self.trajectoryPoints > 1 then
+    -- Draw trajectory points if available, adjusting for camera position
+    if #self.trajectoryPoints > 1 and camera then
         love.graphics.setColor(1, 1, 1, 0.4)  -- Semi-transparent white
+        
+        local cameraOffset = camera.y - love.graphics.getHeight() / 2
         
         -- Draw dots along trajectory
         for i, point in ipairs(self.trajectoryPoints) do
+            local screenX = point.x
+            local screenY = point.y - cameraOffset  -- Convert from world to screen coords
+            
             local size = 5 * (1 - (i / #self.trajectoryPoints))  -- Start bigger, end smaller
-            love.graphics.circle("fill", point.x, point.y, size)
+            love.graphics.circle("fill", screenX, screenY, size)
         end
         
         -- Draw connecting lines for trajectory
         for i = 1, #self.trajectoryPoints - 1 do
-            love.graphics.setColor(1, 1, 1, 0.3 * (1 - (i / #self.trajectoryPoints)))  -- Fade out opacity
-            love.graphics.line(
-                self.trajectoryPoints[i].x, 
-                self.trajectoryPoints[i].y,
-                self.trajectoryPoints[i+1].x,
-                self.trajectoryPoints[i+1].y
-            )
+            love.graphics.setColor(1, 1, 1, 0.3 * (1 - (i / #self.trajectoryPoints)))
+            
+            local screenX1 = self.trajectoryPoints[i].x
+            local screenY1 = self.trajectoryPoints[i].y - cameraOffset
+            local screenX2 = self.trajectoryPoints[i+1].x
+            local screenY2 = self.trajectoryPoints[i+1].y - cameraOffset
+            
+            love.graphics.line(screenX1, screenY1, screenX2, screenY2)
         end
         
         -- Draw landing point indicator
         if #self.trajectoryPoints > 0 then
             local landing = self.trajectoryPoints[#self.trajectoryPoints]
+            local landingScreenX = landing.x
+            local landingScreenY = landing.y - cameraOffset
+            
             love.graphics.setColor(1, 0.5, 0, 0.7)  -- Orange, semi-transparent
-            love.graphics.circle("line", landing.x, landing.y, 10)
+            love.graphics.circle("line", landingScreenX, landingScreenY, 10)
             love.graphics.line(
-                landing.x - 10, landing.y,
-                landing.x + 10, landing.y
+                landingScreenX - 10, landingScreenY,
+                landingScreenX + 10, landingScreenY
             )
             love.graphics.line(
-                landing.x, landing.y - 10,
-                landing.x, landing.y + 10
+                landingScreenX, landingScreenY - 10,
+                landingScreenX, landingScreenY + 10
             )
         end
     end

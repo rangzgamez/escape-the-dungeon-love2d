@@ -11,9 +11,6 @@ function FallingState:new(player)
 end
 
 function FallingState:enter(prevState)
-    if prevState then
-        print(prevState:getName())
-    end
     self.player.onGround = false
 end
 
@@ -52,7 +49,12 @@ end
 function FallingState:getName()
     return "Falling"
 end
-
+function FallingState:onDragEnd(data)
+    if self.player:canJump() then
+        self.player:deductJump()
+        self.player.stateMachine:change("Dashing", data)
+    end
+end
 function FallingState:enemyCollision(enemy)
     -- Enemy hits player - player takes damage
     self.player:takeDamage()

@@ -27,4 +27,5 @@ function BaseState:handleCollision(other) end
 function BaseState:getName() return "BaseState" end
 function BaseState:onDragEnd() end
 function BaseState:enemyCollision(enemy) end
+function BaseState:onLandOnGround() end
 return BaseState

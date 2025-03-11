@@ -30,7 +30,6 @@ function GroundedState:enter(prevState)
 end
 
 function GroundedState:onDragEnd(data)
-    print(data)
     self.player.stateMachine:change("Dashing", data)
 end
 function GroundedState:update(dt)

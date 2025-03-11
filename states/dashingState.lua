@@ -18,11 +18,6 @@ function DashingState:enter(prevState, data)
     -- Call parent method to fire state change event
     BaseState.enter(self, prevState)
     self.player.onGround = false
-    -- only deduct midairJumps if dashing midair
-    if not prevState:getName() == 'Grounded' then
-        self.player.deductJump()
-    end
-
     -- Initialize afterImageTimer when entering dashing state
     self.afterImageTimer = 0.02
     -- Clear after image positions
