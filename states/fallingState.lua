@@ -103,6 +103,12 @@ function FallingState:onDragStart(x, y)
     -- Otherwise ignore the drag if we have no midair jumps left
 end
 
+function FallingState:enemyCollision(enemy)
+    -- Enemy hits player - player takes damage
+    self.player:takeDamage()
+    -- Reset combo when hit
+    self.player:resetCombo()
+end
 
 function FallingState:onLandOnGround()
     -- Change to idle state

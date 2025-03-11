@@ -115,37 +115,7 @@ local function setupEventListeners()
     end)
     -- Handle enemy collisions through events
     Events.on("enemyCollision", function(data)
-        local enemy = data.enemy
-        local playerState = data.playerState
-        
-        -- Handle collision based on player state
-        if playerState == "Dashing" then
-            -- Player dashing into enemy - stun the enemy
-            if enemy.state ~= "stunned" and enemy.stun then
-                enemy:stun()
-                data.result.enemyHit = true
-                
-                -- Fire enemy kill event with combo count
-                Events.fire("enemyKill", {
-                    comboCount = player.comboCount,
-                    enemy = enemy
-                })
-                
-                -- Refresh the player's dash
-                player:refreshJumps() -- CORRECTED METHOD NAME
-                
-                -- Increment combo counter
-                player:incrementCombo()
-            end
-        elseif enemy.state ~= "stunned" then
-            -- Enemy hits player - player takes damage
-            player:takeDamage()
-            
-            -- Reset combo when hit
-            player:resetCombo()
-            
-            data.result.playerHit = true
-        end
+        player:enemyCollision(data)
     end)
     -- Handle enemy kill events
     Events.on("enemyKill", function(data)

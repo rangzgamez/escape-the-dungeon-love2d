@@ -171,23 +171,21 @@ function EnemyManager:handleCollisions(player, particleManager)
     local enemyHit = false
     
     for _, enemy in ipairs(self.enemies) do
-        if self:checkCollision(player, enemy) then
+        if enemy.state == 'stunned' then
+            goto continue
+        end
+        if self:checkCollision(player, enemy)then
             -- Fire an event for the collision instead of calling a method
             local eventData = {
                 enemy = enemy,
-                playerState = player.stateMachine:getCurrentStateName(),
                 comboCount = player.comboCount,
-                result = { enemyHit = false, playerHit = false }
             }
             
             -- Fire the event and let listeners handle it
             Events.fire("enemyCollision", eventData)
             
-            -- Check the result from the event handlers
-            if eventData.result.enemyHit then
-                enemyHit = true
-            end
         end
+        ::continue::
     end
     
     return enemyHit

@@ -140,13 +140,18 @@ function Player:deductJump()
     return self.midairJumps
 end
 
+function Player:enemyCollision(data)
+    -- Handle collision based on player state
+    local enemy = data.enemy
+    self.stateMachine:getCurrentState():enemyCollision(enemy)
+end
 
 -- Draw function
 function Player:draw()
     love.graphics.print("State: " .. self.stateMachine.current:getName(), self.x, self.y-100)
     -- Check for invulnerability flicker
     local shouldDraw = true
-    if self.isInvulnerable and self.stateMachine:getCurrentStateName() ~= "Dragging" then
+    if self.isInvulnerable then
         -- Flash effect - visible every other 0.1 seconds
         shouldDraw = self.damageFlashTimer > 0.05
     end

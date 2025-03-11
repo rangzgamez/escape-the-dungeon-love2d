@@ -93,34 +93,50 @@ function DashingState:checkHorizontalBounds(screenWidth)
     end
 end
 
-function DashingState:handleCollision(enemy)
-    local result = {
-        enemyHit = false,
-        playerHit = false
-    }
+-- function DashingState:handleCollision(enemy)
+--     local result = {
+--         enemyHit = false,
+--         playerHit = false
+--     }
     
-    -- Only stun enemy if not already stunned
-    if enemy.state and enemy.state ~= "stunned" and enemy.stun then
-        enemy:stun()
-        result.enemyHit = true
-        
-        -- Refresh the player's dash
-        self.player:refreshJumps()
-        
-        -- Increment combo counter
-        self.player:incrementCombo()
-        
-        -- Fire enemy kill event for other systems to handle
-        self.events.fire("enemyKill", {
-            comboCount = self.player.comboCount,
-            enemy = enemy
-        })
-        
-        return result
-    end
+--     -- Only stun enemy if not already stunned
+--     enemy:stun()
+--     result.enemyHit = true
     
-    -- No collision handling done
-    return false
+--     -- Refresh the player's dash
+--     self.player:refreshJumps()
+    
+--     -- Increment combo counter
+--     self.player:incrementCombo()
+    
+--     -- Fire enemy kill event for other systems to handle
+--     self.events.fire("enemyKill", {
+--         comboCount = self.player.comboCount,
+--         enemy = enemy
+--     })
+    
+--     return result
+    
+    
+--     -- No collision handling done
+--     return false
+-- end
+
+function DashingState:enemyCollision(enemy)
+    -- Player dashing into enemy - stun the enemy
+    enemy:stun()
+    
+    -- Fire enemy kill event with combo count
+    self.events.fire("enemyKill", {
+        comboCount = self.player.comboCount,
+        enemy = enemy
+    })
+    
+    -- Refresh the player's dash
+    self.player:refreshJumps() -- CORRECTED METHOD NAME
+    
+    -- Increment combo counter
+    self.player:incrementCombo()
 end
 
 function DashingState:draw()

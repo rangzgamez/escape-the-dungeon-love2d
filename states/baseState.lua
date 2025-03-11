@@ -26,5 +26,5 @@ function BaseState:checkHorizontalBounds(screenWidth) end
 function BaseState:handleCollision(other) end
 function BaseState:getName() return "BaseState" end
 function BaseState:onDragEnd() end
-
+function BaseState:enemyCollision(enemy) end
 return BaseState

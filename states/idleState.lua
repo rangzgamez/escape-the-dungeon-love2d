@@ -74,6 +74,7 @@ function IdleState:checkHorizontalBounds(screenWidth)
 end
 
 function IdleState:handleCollision(enemy)
+    print('this shouldnt be happening')
     local result = {
         enemyHit = false,
         playerHit = false
@@ -91,6 +92,13 @@ function IdleState:handleCollision(enemy)
     end
     
     return result
+end
+
+function IdleState:enemyCollision(enemy)
+    -- Enemy hits player - player takes damage
+    self.player:takeDamage()
+    -- Reset combo when hit
+    self.player:resetCombo()
 end
 
 function IdleState:draw()
