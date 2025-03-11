@@ -1,0 +1,86 @@
+flowchart TD
+    %% Event Sources
+    Player["Player Actions"]
+    Collision["Collision System"]
+    Input["User Input"]
+    Enemy["Enemy System"]
+    
+    %% Core Events
+    E1["playerLanded"]
+    E2["playerDashStarted"]
+    E3["playerDragStart"]
+    E4["playerDragEnd"]
+    E5["playerSpringboardJump"]
+    E6["playerStateChanged"]
+    E7["enemyKill"]
+    E8["enemyCollision"]
+    E9["playerHit"]
+    
+    %% Event Handlers
+    H1["Camera Shake"]
+    H2["Particle Effects"]
+    H3["Time Effects"]
+    H4["Score System"]
+    H5["Combo System"]
+    H6["Sound System"]
+    H7["Debug Output"]
+    
+    %% Connect Sources to Events
+    Player --> E1
+    Player --> E2
+    Player --> E3
+    Player --> E4
+    Player --> E5
+    Player --> E6
+    Player --> E9
+    
+    Input --> E3
+    Input --> E4
+    
+    Collision --> E1
+    Collision --> E5
+    Collision --> E8
+    
+    Enemy --> E7
+    Enemy --> E8
+    
+    %% Connect Events to Handlers
+    E1 --> H2
+    E1 --> H6
+    
+    E2 --> H1
+    E2 --> H2
+    E2 --> H6
+    
+    E3 --> H3
+    E4 --> H3
+    
+    E5 --> H1
+    E5 --> H2
+    E5 --> H6
+    
+    E6 --> H7
+    
+    E7 --> H1
+    E7 --> H2
+    E7 --> H3
+    E7 --> H4
+    E7 --> H5
+    E7 --> H6
+    
+    E8 --> H5
+    E8 --> H9
+    
+    E9 --> H1
+    E9 --> H2
+    E9 --> H5
+    E9 --> H6
+    
+    %% Style
+    classDef events fill:#f96,stroke:#333,stroke-width:2px
+    classDef handlers fill:#9f6,stroke:#333,stroke-width:1px
+    classDef sources fill:#69f,stroke:#333,stroke-width:1px
+    
+    class E1,E2,E3,E4,E5,E6,E7,E8,E9 events
+    class H1,H2,H3,H4,H5,H6,H7 handlers
+    class Player,Collision,Input,Enemy sources

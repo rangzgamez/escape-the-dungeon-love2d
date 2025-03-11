@@ -1,0 +1,46 @@
+stateDiagram-v2
+    [*] --> Idle : Game Start
+    
+    Idle --> Dragging : Player Drag Start
+    Idle --> Falling : Left Ground
+    Idle --> Dashing : Keyboard Jump
+    
+    Dragging --> Dashing : Drag Release\n(sufficient power)
+    Dragging --> Idle : Drag Release\n(insufficient power)\n(on ground)
+    Dragging --> Falling : Drag Release\n(insufficient power)\n(in air)
+    Dragging --> Falling : Left Ground
+    
+    Dashing --> Falling : Dash Timer Ends
+    
+    Falling --> Dashing : Mid-air Jump
+    Falling --> Dragging : Player Drag Start\n(mid-air jumps > 0)
+    Falling --> Idle : Land on Ground
+    
+    note right of Idle
+        Reset mid-air jumps
+        Zero velocity
+    end note
+    
+    note right of Dragging
+        Calculate trajectory
+        Draw aiming visuals
+        Can pause/slow time
+    end note
+    
+    note right of Dashing
+        Apply dash force
+        Create particle effects
+        Can defeat enemies
+        Create after-images
+    end note
+    
+    note right of Falling
+        Apply gravity
+        Check for landing
+        Horizontal movement allowed
+    end note
+    
+    Idle --> [*] : Game Over
+    Falling --> [*] : Fall Below Screen
+    Dashing --> [*] : Game Over
+    Dragging --> [*] : Game Over
