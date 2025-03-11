@@ -49,7 +49,10 @@ end
 
 function GroundedState:onLeftGround()
     -- Change to falling state
-    self.player.stateMachine:change("Falling")
+    if self.player.yVelocity > 5 then
+        -- Change to falling state
+        self.player.stateMachine:change("Falling")
+    end
 end
 
 function GroundedState:checkHorizontalBounds(screenWidth)
