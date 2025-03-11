@@ -11,14 +11,7 @@ function BaseState:new(player)
 end
 
 -- Default implementations that can be overridden by specific states
-function BaseState:enter(prevState) 
-    -- Fire state change event when entering a new state
-    self.events.fire("playerStateChanged", {
-        newState = self:getName(),
-        prevState = prevState and prevState:getName() or nil
-    })
-end
-
+function BaseState:enter(prevState, data) end
 function BaseState:exit() end
 function BaseState:update(dt) end
 function BaseState:draw() end
@@ -32,10 +25,6 @@ function BaseState:touchreleased(id, x, y, particleManager) end
 function BaseState:checkHorizontalBounds(screenWidth) end
 function BaseState:handleCollision(other) end
 function BaseState:getName() return "BaseState" end
-function BaseState:onDragStart(x, y) end
-function BaseState:onDragUpdate(x, y) end
 function BaseState:onDragEnd() end
-function BaseState:onLandOnGround() end
-function BaseState:onLeftGround() end
 
 return BaseState

@@ -4,7 +4,6 @@ local StateMachine = require("states/stateMachine")
 local IdleState = require("states/idleState")
 local FallingState = require("states/fallingState")
 local DashingState = require("states/dashingState")
-local DraggingState = require("states/draggingState")
 
 local Player = {}
 Player.__index = Player
@@ -42,13 +41,6 @@ function Player:new(x, y)
     -- Midair jumps system
     self.maxMidairJumps = 1  -- Default: one midair jump (can be increased by powerups)
     self.midairJumps = self.maxMidairJumps  -- Current available midair jumps
-    
-    -- Drag-to-jump mechanics
-    self.dragStartX = nil
-    self.dragStartY = nil
-    self.dragVector = {x = 0, y = 0}
-    self.maxDragDistance = 150 -- Maximum drag distance for dash power calculation
-    self.minDragDistance = 20  -- Minimum drag distance to trigger a dash
     
     -- Trajectory preview
     self.trajectoryPoints = {}
@@ -97,11 +89,10 @@ function Player:new(x, y)
     self.stateMachine:add("Idle", IdleState:new(self))
     self.stateMachine:add("Falling", FallingState:new(self))
     self.stateMachine:add("Dashing", DashingState:new(self))
-    self.stateMachine:add("Dragging", DraggingState:new(self))
     
     -- Start in the idle state (on ground)
     self.stateMachine:change("Idle")
-    
+
     return self
 end
 
@@ -109,6 +100,17 @@ end
 function Player:changeState(stateName, ...)
     return self.stateMachine:change(stateName, ...)
 end
+
+function Player:onDragEnd(data)
+    -- Only perform action if the drag was significant
+    if data.isSignificantDrag then
+        -- Handle the jump/dash based on current state
+        print(self.stateMachine.current:getName());
+        self.stateMachine.current:onDragEnd()
+
+    end
+end
+
 
 -- Main update function
 function Player:update(dt)
@@ -133,8 +135,15 @@ function Player:update(dt)
     self:updateComboAnimations(dt)
 end
 
+function Player:deductJump()
+    self.midairJumps = self.midairJumps - 1
+    return self.midairJumps
+end
+
+
 -- Draw function
 function Player:draw()
+    love.graphics.print("State: " .. self.stateMachine.current:getName(), self.x, self.y-100)
     -- Check for invulnerability flicker
     local shouldDraw = true
     if self.isInvulnerable and self.stateMachine:getCurrentStateName() ~= "Dragging" then
@@ -458,18 +467,6 @@ function Player:startDrag(x, y)
     -- Don't change state directly, let the current state decide
     local currentState = self.stateMachine:getCurrentState()
     currentState:onDragStart(x, y)
-end
-
-function Player:updateDrag(x, y)
-    -- Let the current state handle drag updates
-    local currentState = self.stateMachine:getCurrentState()
-    currentState:onDragUpdate(x, y)
-end
-
-function Player:endDrag()
-    -- Let the current state handle drag end
-    local currentState = self.stateMachine:getCurrentState()
-    currentState:onDragEnd()
 end
 
 function Player:landOnGround()

@@ -37,8 +37,4 @@ function StateMachine:getCurrentState()
     return self.current
 end
 
-function StateMachine:getCurrentStateName()
-    return self.current and self.current:getName() or "None"
-end
-
 return StateMachine

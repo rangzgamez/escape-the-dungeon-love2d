@@ -98,15 +98,6 @@ function DraggingState:onDragEnd()
     self.player.trajectoryPoints = {}
 end
 
-function DraggingState:onLeftGround()
-    -- Just update the onGround flag, but stay in dragging state
-    self.player.onGround = false
-end
-
-function DraggingState:onLandOnGround()
-    -- Just update the onGround flag, but stay in dragging state
-    self.player.onGround = true
-end
 
 function DraggingState:calculateTrajectory()
     -- Clear previous trajectory

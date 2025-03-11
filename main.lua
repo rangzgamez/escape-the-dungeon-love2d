@@ -10,7 +10,7 @@ local Events = require("lib/events")
 local TimeManager = require("lib/timeManager")
 local PowerUpManager = require('managers/powerUpManager')
 local TransitionManager = require("managers/transitionManager")
-
+local InputManager = require('managers/inputManager')
 -- Mobile resolution settings
 local MOBILE_WIDTH = 390  -- iPhone screen width
 local MOBILE_HEIGHT = 844 -- iPhone screen height
@@ -26,6 +26,7 @@ local camera
 local enemyManager
 local powerUpManager
 local transitionManager
+local inputManager
 local timeManager
 local gameSpeed = 50  -- Initial upward game speed (slower for vertical game)
 local score = 0
@@ -47,31 +48,29 @@ local function setupEventListeners()
     -- Clear any existing listeners first
     Events.clearAll()
     
-    -- Time effects for dragging
-    Events.on("playerDragStart", function(data)
-        camera:clearShake()
-        isDragging = true
+    Events.on("dragStart", function(data)
         if pauseWhileDragging then
             timeManager:setTimeScale(0)
         elseif slowDownWhileDragging then
             timeManager:setTimeScale(slowDownFactor)
         end
+        
+        -- Clear any camera shake
+        camera:clearShake()
+
     end)
     
-    Events.on("playerDragEnd", function(data)
-        isDragging = false
+    Events.on("dragEnd", function(data)
         if pauseWhileDragging or slowDownWhileDragging then
-            timeManager:setTimeScale(1)
+            timeManager:setTimeScale(1, true)
         end
+        player:onDragEnd(data)
     end)
     
-    -- Particle effects for various actions
-    Events.on("playerLanded", function(data)
-        particleManager:createDustEffect(
-            data.x + player.width/2,
-            data.y,
-            player.height
-        )
+    Events.on("dragCancel", function()
+        if pauseWhileDragging or slowDownWhileDragging then
+            timeManager:setTimeScale(1, true)
+        end
     end)
     
     Events.on("playerDashStarted", function(data)
@@ -201,7 +200,9 @@ function love.load()
     timeManager = TimeManager:new()
 
     transitionManager = TransitionManager:new()
-    
+
+    inputManager = InputManager:new() -- Initialize the new InputManager
+
     -- Initialize enemy manager (with platforms reference)
     enemyManager = EnemyManager:new()
     enemyManager:generateInitialEnemies(platforms) -- Pass platforms here
@@ -231,6 +232,8 @@ function love.update(dt)
     
     -- Store original dt for animations that should run regardless of pause
     local realDt = dt
+
+    inputManager:update(dt, camera)
 
     -- Handle player dragging regardless of pause state
     -- Handle player dragging regardless of pause state
@@ -280,6 +283,7 @@ function love.update(dt)
 
     -- Generate new platforms as camera moves upward
     world:updatePlatforms(camera, platforms, springboards)
+    
     
     transitionManager:update(dt)
 
@@ -412,29 +416,29 @@ function love.mousepressed(x, y, button)
     end
 
     if button == 1 and not gameOver then -- Left mouse button
-        player:startDrag(x, y + camera.y - MOBILE_HEIGHT / 2)
+        inputManager:mousepressed(x, y, button, camera, player)
     end
 end
 
 -- Mouse moved (update drag)
 function love.mousemoved(x, y)
     if not gameOver then
-        player:updateDrag(x, y + camera.y - MOBILE_HEIGHT / 2)
+        inputManager:mousemoved(x, y, camera, player)
     end
 end
 
 -- Mouse released (end drag and jump)
 function love.mousereleased(x, y, button)
     if button == 1 and not gameOver then -- Left mouse button
-        player:endDrag(particleManager)
+        inputManager:mousereleased(x, y, button, camera, player)
     end
 end
 
 -- Touch controls for mobile devices
 function love.touchpressed(id, x, y)
-    -- Check if touching settings UI
+    -- Check if clicking on settings UI
     if settingsVisible then
-        -- Check if touching slow down option
+        -- Check if clicking on slow down option
         if x >= 10 and x <= 30 and y >= 130 and y <= 150 then
             slowDownWhileDragging = not slowDownWhileDragging
             -- Disable pause if slow down is enabled
@@ -443,7 +447,7 @@ function love.touchpressed(id, x, y)
             end
             return
         end
-        -- Check if touching pause option
+        -- Check if clicking on pause option
         if x >= 10 and x <= 30 and y >= 170 and y <= 190 then
             pauseWhileDragging = not pauseWhileDragging
             -- Disable slow down if pause is enabled
@@ -455,26 +459,20 @@ function love.touchpressed(id, x, y)
     end
 
     if not gameOver then
-        player:startDrag(x, y + camera.y - MOBILE_HEIGHT / 2)
+        inputManager:touchpressed(x, y + camera.y - MOBILE_HEIGHT / 2, player)
     end
 end
 
 function love.touchmoved(id, x, y)
     if not gameOver then
-        player:updateDrag(x, y + camera.y - MOBILE_HEIGHT / 2)
+        inputManager:touchmoved(x, y + camera.y - MOBILE_HEIGHT / 2, player)
     end
 end
 
 function love.touchreleased(id, x, y)
     if not gameOver then
-        player:endDrag(particleManager)
+        inputManager:touchReleased(particleManager, player)
     end
-end
-
--- Add this function to trigger screen freeze
-function triggerScreenFreeze(duration)
-    freezeTimer = duration
-    timeScale = 0.05  -- Start at 5% speed
 end
 
 -- Draw the game
@@ -506,6 +504,9 @@ function love.draw()
 
     love.graphics.pop()
 
+    -- Draw input visualizations (trajectory, etc.)
+    inputManager:draw()
+
     -- Draw UI elements (not affected by camera)
     love.graphics.setColor(1, 1, 1)
     love.graphics.print("Score: " .. score, 10, 10)
@@ -517,7 +518,7 @@ function love.draw()
     love.graphics.setColor(1, 1, 1)
     love.graphics.print("Health", 15, 52)
     -- Draw game state indicators
-    if player.isDragging then
+    if inputManager:isDraggingActive() then
         if pauseWhileDragging then
             love.graphics.setColor(1, 0, 0)
             love.graphics.print("PAUSED", MOBILE_WIDTH - 80, 10)

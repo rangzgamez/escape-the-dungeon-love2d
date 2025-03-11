@@ -29,6 +29,11 @@ function IdleState:enter(prevState)
         })
     end
 end
+
+function IdleState:onDragEnd(data)
+    print(data)
+    self.player.stateMachine:change("Dash", data)
+end
 function IdleState:update(dt)
     -- Handle horizontal movement (keyboard controls)
     self.player.xVelocity = 0
@@ -49,45 +54,9 @@ function IdleState:update(dt)
     end
 end
 
-function IdleState:keypressed(key)
-    -- Jump when space/up is pressed
-    if key == "space" or key == "up" or key == "w" then
-        -- Set up dash parameters
-        self.player.dashTimeLeft = 0.3 -- Use a medium-length dash for keyboard controls
-        self.player.dashDirection = {
-            x = 0,
-            y = -1 -- Straight up
-        }
-        
-        -- Change to dashing state
-        self.player.stateMachine:change("Dashing")
-        
-        -- Fire dash event with medium power
-        self.events.fire("playerDashStarted", {
-            power = 0.7,
-            direction = {x = 0, y = -1},
-            fromGround = true
-        })
-    end
-end
-
-function IdleState:onDragStart(x, y)
-    -- Store drag start position
-    self.player.dragStartX = x
-    self.player.dragStartY = y
-    
-    -- Change to dragging state
-    self.player.stateMachine:change("Dragging")
-end
-
 function IdleState:onLeftGround()
     -- Change to falling state
     self.player.stateMachine:change("Falling")
-end
-
-function IdleState:onLandOnGround()
-    -- Already on ground, nothing to do
-    self.player.onGround = true
 end
 
 function IdleState:checkHorizontalBounds(screenWidth)

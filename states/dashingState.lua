@@ -9,24 +9,34 @@ function DashingState:new(player)
     local self = BaseState.new(self, player)
     -- Dash specific state values
     self.afterImageTimer = nil
+    self.dashTimeLeft = nil
+    self.dashDirection = nil
     return self
 end
 
-function DashingState:enter(prevState)
+function DashingState:enter(prevState, data)
     -- Call parent method to fire state change event
     BaseState.enter(self, prevState)
-    
+
+    -- only deduct midairJumps if dashing midair
+    if not prevState:getName() == 'Idle' then
+        self.player.deductJump()
+    end
+
     -- Initialize afterImageTimer when entering dashing state
     self.afterImageTimer = 0.02
     -- Clear after image positions
     self.player.afterImagePositions = {}
-    
-    -- Fire dash started event with power and direction
-    local dragDistance = math.sqrt(self.player.dragVector.x^2 + self.player.dragVector.y^2)
-    
+            
+    -- Set up dash parameters
+    self.dashTimeLeft = self.player.minDashDuration + data.power * (self.player.maxDashDuration - self.player.minDashDuration)
+    self.dashDirection = data.direction
+                
+    -- for visual effects and potentially other items
     self.events.fire("playerDashStarted", {
-        direction = self.player.dashDirection,
-        fromGround = prevState and prevState:getName() == "Idle"
+        power = data.power,
+        direction = data.direction,
+        fromGround = prevState:getName() == 'Idle'
     })
 end
 
@@ -47,11 +57,11 @@ function DashingState:update(dt)
     self.player.dashTimeLeft = self.player.dashTimeLeft - dt
     
     -- Apply dash velocity
-    self.player.x = self.player.x + self.player.dashDirection.x * self.player.dashSpeed * dt
-    self.player.y = self.player.y + self.player.dashDirection.y * self.player.dashSpeed * dt
+    self.player.x = self.player.x + self.dashDirection.x * self.player.dashSpeed * dt
+    self.player.y = self.player.y + self.dashDirection.y * self.player.dashSpeed * dt
     
     -- End dash when timer runs out
-    if self.player.dashTimeLeft <= 0 then
+    if self.dashTimeLeft <= 0 then
         -- Set vertical velocity to 0 for instant drop
         self.player.xVelocity = 0  --self.player.dashDirection.x * self.player.dashSpeed * 0.2 -- Keep a small horizontal momentum
         self.player.yVelocity = 0 -- Reset vertical velocity for straight drop
@@ -141,19 +151,6 @@ function DashingState:draw()
     end
 end
 
--- can cancel a dash into another dash
-function DashingState:onDragStart(x, y)
-    -- Check if we have any midair jumps available
-    if self.player.midairJumps > 0 then
-        -- Store drag start position
-        self.player.dragStartX = x
-        self.player.dragStartY = y
-        
-        -- Change to dragging state
-        self.player.stateMachine:change("Dragging")
-    end
-    -- Otherwise ignore the drag if we have no midair jumps left
-end
 function DashingState:getName()
     return "Dashing"
 end
