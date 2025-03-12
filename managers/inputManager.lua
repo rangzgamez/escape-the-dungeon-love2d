@@ -1,5 +1,6 @@
 -- managers/inputManager.lua - Manages input and dragging for Love2D Vertical Jumper
 local Events = require("lib/events")
+local Physics = require("lib/physics")
 local InputManager = {}
 InputManager.__index = InputManager
 
@@ -170,12 +171,7 @@ function InputManager:endDrag(x, y, camera)
         direction.y = -self.dragVector.y / dragDistance
         power = math.min(dragDistance, self.maxDragDistance) / self.maxDragDistance
     end
-    
-    -- Update trajectory one last time to ensure it matches the final drag
-    if self.targetPlayer then
-        self:calculateTrajectory()
-    end
-    
+        
     -- Fire event for drag end with updated direction
     Events.fire("dragEnd", {
         x = x,
@@ -188,7 +184,6 @@ function InputManager:endDrag(x, y, camera)
         isSignificantDrag = isSignificantDrag,
         trajectoryPoints = self.trajectoryPoints
     })
-    
     -- Reset drag state
     self.isDragging = false
     self.dragStartX = nil
@@ -227,68 +222,43 @@ end
 
 -- In the calculateTrajectory method, ensure we're using world coordinates
 function InputManager:calculateTrajectory()
-    -- Clear previous trajectory
-    self.trajectoryPoints = {}
+    -- Calculate dash params from drag vector
+    local dashParams = Physics.calculateDashParams(
+        self.dragVector,
+        self.minDragDistance,
+        self.maxDragDistance,
+        self.targetPlayer.minDashDuration,
+        self.targetPlayer.maxDashDuration
+    )
     
-    -- Only calculate if we have a significant drag
-    local dragDistance = math.sqrt(self.dragVector.x^2 + self.dragVector.y^2)
-    if dragDistance < self.minDragDistance then
+    -- If drag not significant, clear trajectory
+    if not dashParams then
+        self.trajectoryPoints = {}
         return
     end
     
-    -- Calculate normalized direction
-    local direction = {x = 0, y = 0}
-    if dragDistance > 0 then
-        direction.x = -self.dragVector.x / dragDistance
-        direction.y = -self.dragVector.y / dragDistance
-    else
-        return
-    end
+    -- Store the dash parameters for later use
+    self.dashParams = dashParams
+    self.dashParams.speed = self.playerDashSpeed
     
-    -- Store the normalized direction for dash logic
-    self.dashDirection = direction
+    -- Calculate player center position
+    local centerX = self.playerX + self.playerWidth/2
+    local centerY = self.playerY + self.playerHeight/2
     
-    -- Calculate power based on drag distance
-    local power = math.min(dragDistance, self.maxDragDistance) / self.maxDragDistance
+    -- Calculate trajectory using the shared physics
+    self.trajectoryPoints = Physics.calculateDashTrajectory(
+        centerX,
+        centerY,
+        dashParams.direction,
+        self.playerDashSpeed,
+        dashParams.power,
+        dashParams.duration,
+        self.playerGravity,
+        200  -- Number of trajectory points
+    )
     
-    -- Calculate dash duration based on power
-    local minDashDuration = 0.001
-    local maxDashDuration = 0.2
-    local dashDuration = minDashDuration + power * (maxDashDuration - minDashDuration)
-    
-    -- Starting position (center of player)
-    local startX = self.playerX + self.playerWidth/2
-    local startY = self.playerY + self.playerHeight/2
-    
-    -- First half of points show the dash path
-    local dashPoints = 10
-    for i = 0, dashPoints do
-        -- Use even spacing along the dash path
-        local t = (i / dashPoints) * dashDuration
-        local pointX = startX + direction.x * self.playerDashSpeed * power * t
-        local pointY = startY + direction.y * self.playerDashSpeed * power * t
-        
-        table.insert(self.trajectoryPoints, {x = pointX, y = pointY})
-    end
-    
-    -- Calculate dash end position
-    local dashEndX = startX + direction.x * self.playerDashSpeed * power * dashDuration
-    local dashEndY = startY + direction.y * self.playerDashSpeed * power * dashDuration
-    
-    -- Second half of points show the falling path
-    local fallPoints = 10
-    local maxFallTime = 0.5 -- How far ahead to predict the fall
-    for i = 1, fallPoints do
-        local t = (i / fallPoints) * maxFallTime
-        
-        -- Very small horizontal movement after dash
-        local pointX = dashEndX + (direction.x * self.playerDashSpeed * 0.05) * t
-        
-        -- Apply gravity formula for vertical movement
-        local pointY = dashEndY + 0.5 * self.playerGravity * t * t
-        
-        table.insert(self.trajectoryPoints, {x = pointX, y = pointY})
-    end
+    -- IMPORTANT: Keep trajectory points as center coordinates
+    -- We'll convert to screen coordinates only during drawing
 end
 
 function InputManager:getDragData()
@@ -425,17 +395,19 @@ function InputManager:draw(camera)
         love.graphics.setColor(1, 1, 1, 0.4)  -- Semi-transparent white
         
         local cameraOffset = camera.y - love.graphics.getHeight() / 2
+        local halfWidth = self.playerWidth/2
+        local halfHeight = self.playerHeight/2
         
         -- Draw dots along trajectory
         for i, point in ipairs(self.trajectoryPoints) do
-            local screenX = point.x
-            local screenY = point.y - cameraOffset  -- Convert from world to screen coords
+            local screenX = point.x - halfWidth  -- Convert from center to top-left for display
+            local screenY = point.y - halfHeight - cameraOffset  -- Convert from world to screen coords
             
             local size = 5 * (1 - (i / #self.trajectoryPoints))  -- Start bigger, end smaller
-            love.graphics.circle("fill", screenX, screenY, size)
+            love.graphics.circle("fill", point.x, point.y - cameraOffset, size)  -- Draw at center
         end
         
-        -- Draw connecting lines for trajectory
+        -- Draw connecting lines for trajectory (keep as center points)
         for i = 1, #self.trajectoryPoints - 1 do
             love.graphics.setColor(1, 1, 1, 0.3 * (1 - (i / #self.trajectoryPoints)))
             
@@ -447,7 +419,7 @@ function InputManager:draw(camera)
             love.graphics.line(screenX1, screenY1, screenX2, screenY2)
         end
         
-        -- Draw landing point indicator
+        -- Draw landing point indicator (at center point)
         if #self.trajectoryPoints > 0 then
             local landing = self.trajectoryPoints[#self.trajectoryPoints]
             local landingScreenX = landing.x
