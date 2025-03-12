@@ -23,6 +23,7 @@ local particleManager
 local collisionManager
 local world
 local camera
+local distanceFromLava
 local enemyManager
 local powerUpManager
 local transitionManager
@@ -31,6 +32,7 @@ local timeManager
 local gameSpeed = 50  -- Initial upward game speed (slower for vertical game)
 local score = 0
 local gameOver = false
+local gameOverReason = 'DIED'
 local distanceClimbed = 0
 local startHeight = 0
 
@@ -203,7 +205,7 @@ function love.update(dt)
     -- Store original dt for animations that should run regardless of pause
     local realDt = dt
 
-    inputManager:update(dt, player, camera)
+    inputManager:update(dt, camera)
 
     -- Handle player dragging regardless of pause state
     -- Handle player dragging regardless of pause state
@@ -234,7 +236,20 @@ function love.update(dt)
     dt = math.min(dt, 0.016)
 
     -- Update camera position
-    camera:update(dt, player, gameSpeed)
+    distanceFromLava = camera:update(dt, player, gameSpeed)
+    
+    -- Check if player has been caught by lava
+    if camera:isPlayerCaughtByLava(player) or distanceFromLava <= 0 then
+        -- Player caught by lava - game over
+        gameOver = true
+        gameOverReason = "CAUGHT BY LAVA"
+        
+        -- Create some particle effects for burning
+        particleManager:createBurnEffect(player.x + player.width/2, player.y + player.height/2)
+        
+        -- Add some screen shake
+        camera:shake(5, 0.5)
+    end
 
     -- Calculate distance climbed (negative y is upward)
     distanceClimbed = startHeight - camera.y
@@ -295,8 +310,9 @@ function love.update(dt)
     world:cleanupPlatforms(camera, platforms, springboards)
 
     -- Game over if player falls below camera view
-    if player.y > camera.y + MOBILE_HEIGHT then
+    if player.y > camera.y + love.graphics.getHeight() - 50 then
         gameOver = true
+        gameOverReason = "FELL INTO LAVA"
     end
 end
 
@@ -452,7 +468,7 @@ function love.draw()
 
     -- Apply camera transformation
     love.graphics.push()
-    love.graphics.translate(0, -cameraPos.y + MOBILE_HEIGHT / 2 + cameraPos.x)
+    love.graphics.translate(0, -cameraPos.y + love.graphics.getHeight() / 2 + cameraPos.x)
 
     -- Draw platforms
     for _, platform in ipairs(platforms) do
@@ -473,6 +489,8 @@ function love.draw()
     player:draw()
 
     love.graphics.pop()
+
+    camera:drawLava()
 
     -- Draw input visualizations (trajectory, etc.)
     inputManager:draw(camera)
@@ -542,12 +560,14 @@ function love.draw()
         love.graphics.print("Tap checkboxes to toggle options", 10, 210)
         love.graphics.print("Press 'S' to close settings", 10, 230)
     end
-
+    love.graphics.setColor(1, 0.3, 0.3)
+    love.graphics.print("Lava: " .. math.floor(distanceFromLava) .. "px", 10, 70)
+    
     if gameOver then
         love.graphics.setColor(1, 0, 0)
-        love.graphics.printf("GAME OVER", 0, MOBILE_HEIGHT / 2 - 40, MOBILE_WIDTH, "center")
-        love.graphics.printf("Press R to restart", 0, MOBILE_HEIGHT / 2, MOBILE_WIDTH, "center")
-        love.graphics.printf("Final Score: " .. score, 0, MOBILE_HEIGHT / 2 + 40, MOBILE_WIDTH, "center")
+        love.graphics.printf(gameOverReason, 0, love.graphics.getHeight() / 2 - 40, love.graphics.getWidth(), "center")
+        love.graphics.printf("Press R to restart", 0, love.graphics.getHeight() / 2, love.graphics.getWidth(), "center")
+        love.graphics.printf("Final Score: " .. score, 0, love.graphics.getHeight() / 2 + 40, love.graphics.getWidth(), "center")
     else
         love.graphics.setColor(1, 1, 1)
         love.graphics.print("Click and drag to jump", 10, 50)

@@ -176,4 +176,35 @@ function ParticleManager:createImpactEffect(x, y)
     })
 end
 
+function ParticleManager:createBurnEffect(x, y)
+    -- Check if the canvas exists
+    if not self.dustCanvas then return end
+    
+    -- Create a new particle system
+    local burn = love.graphics.newParticleSystem(self.dustCanvas, 100)
+    
+    -- Set particle properties for burning effect
+    burn:setParticleLifetime(0.3, 1.2)
+    burn:setEmissionRate(200)
+    burn:setSizeVariation(1)
+    burn:setLinearAcceleration(-50, -150, 50, -50) -- Particles go upward
+    burn:setColors(
+        1, 0.7, 0.1, 1,     -- Start as bright yellow/orange
+        1, 0.3, 0, 0.8,     -- Fade to orange
+        0.7, 0, 0, 0        -- End as dark red and fade out
+    )
+    burn:setSizes(3, 2, 1)   -- Start larger, end smaller
+    burn:setPosition(x, y)
+    burn:setSpread(math.pi*2) -- Full 360 degree spread
+    
+    -- Emit a burst of particles
+    burn:emit(50)
+    
+    -- Store the system with a longer timer for burn effect
+    table.insert(self.particleSystems, {
+        system = burn,
+        timer = 1.5
+    })
+end
+
 return ParticleManager

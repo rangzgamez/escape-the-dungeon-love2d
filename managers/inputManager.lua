@@ -49,6 +49,11 @@ function InputManager:update(dt, camera)
         
         -- Calculate trajectory if we have a target player
         if self.targetPlayer then
+            -- IMPORTANT: Update player position before recalculating trajectory
+            self.playerX = self.targetPlayer.x
+            self.playerY = self.targetPlayer.y
+            
+            -- Recalculate trajectory based on updated player position
             self:calculateTrajectory()
         end
     end
