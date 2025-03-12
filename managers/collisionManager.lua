@@ -4,14 +4,14 @@ local Events = require('lib/events')
 local CollisionManager = {}
 CollisionManager.__index = CollisionManager
 
-function CollisionManager:new(player, platforms, springboards, particleManager)
+function CollisionManager:new(player, platforms, springboards, particleManager, xpManager)
     local self = setmetatable({}, CollisionManager)
     
     self.player = player
     self.platforms = platforms
     self.springboards = springboards
     self.particleManager = particleManager
-    
+    self.xpManager = xpManager
     return self
 end
 
@@ -22,7 +22,57 @@ function CollisionManager:checkCollision(a, b)
            a.y < b.y + b.height and
            a.y + a.height > b.y
 end
-
+function CollisionManager:handleXpCollisions()
+    if not self.xpManager then return 0 end
+    
+    local playerBounds = self.player:getBounds()
+    local totalXp = 0
+    
+    -- Get player center
+    local playerCenterX = playerBounds.x + playerBounds.width/2
+    local playerCenterY = playerBounds.y + playerBounds.height/2
+    
+    -- Collection radius (can be modified by powerups)
+    local collectionRadius = 75 + (self.xpManager.collectionRadiusBonus or 0)
+    
+    -- Check each pellet
+    local pellets = self.xpManager.pellets
+    for i = #pellets, 1, -1 do
+        local pellet = pellets[i]
+        if pellet.active and pellet.collectible then
+            -- Get pellet center
+            local pelletBounds = pellet:getBounds()
+            local pelletCenterX = pelletBounds.x + pelletBounds.width/2
+            local pelletCenterY = pelletBounds.y + pelletBounds.height/2
+            
+            -- Calculate distance between centers
+            local dx = playerCenterX - pelletCenterX
+            local dy = playerCenterY - pelletCenterY
+            local distance = math.sqrt(dx*dx + dy*dy)
+            
+            -- Check if within collection radius
+            if distance < collectionRadius then
+                -- Collect the pellet
+                local xpValue = pellet:collect()
+                totalXp = totalXp + xpValue
+                table.remove(pellets, i)
+            elseif distance < collectionRadius * 2 then
+                -- Attract the pellet towards the player
+                local nx = dx / distance
+                local ny = dy / distance
+                
+                -- Movement speed based on distance (faster when closer)
+                local speed = 400 * (1 - distance/collectionRadius/2)
+                
+                -- Move pellet towards player
+                pellet.x = pellet.x + nx * speed * love.timer.getDelta()
+                pellet.y = pellet.y + ny * speed * love.timer.getDelta()
+            end
+        end
+    end
+    
+    return totalXp
+end
 -- Check if player is colliding with platforms and springboards
 function CollisionManager:handleCollisions(dt)
     local wasOnGround = self.player.onGround
@@ -40,6 +90,13 @@ function CollisionManager:handleCollisions(dt)
 
     -- Handle springboard collisions separately
     self:handleSpringboardCollisions(dt, prevX, prevY)
+
+    -- Handle XP pellet collisions and return collected XP
+    local collectedXp = self:handleXpCollisions()
+    if collectedXp > 0 then
+        print(collectedXp)
+        self.player:addExperience(collectedXp)
+    end
 end
 
 function CollisionManager:updatePlayerGroundState(playerHitPlatform, wasOnGround)

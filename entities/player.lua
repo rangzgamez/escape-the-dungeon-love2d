@@ -81,7 +81,23 @@ function Player:new(x, y)
     self.affirmationY = 0
     self.affirmationOffsetX = 0
     self.affirmationOffsetY = 0
-    
+
+    -- Add these properties to Player:new() function
+    self.experience = 0
+    self.level = 1
+    self.levelUpPending = false
+    self.xpToNextLevel = 10 -- Base XP needed (will scale with level)
+    self.powerups = {} -- Track active powerups
+    self.powerupLevels = {} -- Track levels of each powerup
+
+    -- XP text animation properties
+    self.xpPopupText = nil
+    self.xpPopupTimer = 0
+    self.xpPopupX = 0
+    self.xpPopupY = 0
+    self.xpPopupScale = 1
+    self.xpPopupColor = {0.2, 0.8, 1}
+
     -- Initialize the state machine
     self.stateMachine = StateMachine:new()
     
@@ -480,4 +496,186 @@ function Player:leftGround()
     currentState:onLeftGround()
 end
 
+function Player:addExperience(amount)
+    -- Add XP
+    self.experience = self.experience + amount
+    
+    -- Show XP popup text
+    if amount > 0 then
+        self:showXpPopup(amount)
+    end
+    
+    -- Check for level up
+    if self.experience >= self.xpToNextLevel then
+        self:levelUp()
+    end
+    
+    -- Fire XP changed event
+    Events.fire("playerXpChanged", {
+        player = self,
+        currentXp = self.experience,
+        level = self.level,
+        xpToNextLevel = self.xpToNextLevel
+    })
+    
+    return amount
+end
+
+-- Level up method
+function Player:levelUp()
+    -- Increase level
+    self.level = self.level + 1
+    
+    -- Flag that a level-up menu should be shown
+    self.levelUpPending = true
+    
+    -- Reset experience counter and increase requirement for next level
+    self.experience = self.experience - self.xpToNextLevel
+    self.xpToNextLevel = math.floor(self.xpToNextLevel * 1.5) -- 50% more XP needed for next level
+    
+    -- Fire level up event
+    Events.fire("playerLevelUp", {
+        player = self,
+        newLevel = self.level
+    })
+    
+    -- If we still have enough XP for another level up, recursively level up again
+    if self.experience >= self.xpToNextLevel then
+        self:levelUp()
+    end
+end
+
+-- Method to apply a powerup
+function Player:applyPowerup(type)
+    -- Initialize powerup level if not exists
+    if not self.powerupLevels[type] then
+        self.powerupLevels[type] = 0
+        self.powerups[type] = true
+    end
+    
+    -- Increment powerup level
+    self.powerupLevels[type] = self.powerupLevels[type] + 1
+    
+    -- Apply effect based on type and level
+    if type == "HEALTH_MAX" then
+        -- Increase max health
+        local prevMax = 3 + (self.powerupLevels[type] - 1)
+        local newMax = 3 + self.powerupLevels[type]
+        -- Also heal the player to the new maximum
+        self.health = newMax
+        
+    elseif type == "DOUBLE_JUMP" then
+        -- Increase max midair jumps
+        self.maxMidairJumps = self.maxMidairJumps + 1
+        self.midairJumps = self.maxMidairJumps -- Refresh jumps
+        
+    elseif type == "DASH_POWER" then
+        -- Increase dash power/speed
+        self.dashSpeed = self.dashSpeed * 1.2
+        
+    elseif type == "DASH_DURATION" then
+        -- Increase maximum dash duration
+        self.maxDashDuration = self.maxDashDuration * 1.2
+        
+    elseif type == "COLLECTION_RADIUS" then
+        -- Increase XP collection radius (handled by XpManager)
+        Events.fire("playerCollectionRadiusChanged", {
+            player = self,
+            bonus = self.powerupLevels[type] * 20 -- +20 per level
+        })
+        
+    elseif type == "SPEED" then
+        -- Increase movement speed
+        self.horizontalSpeed = self.horizontalSpeed * 1.15
+        
+    elseif type == "SHIELD" then
+        -- Add or refresh shield
+        self.shieldActive = true
+        self.shieldHealth = self.powerupLevels[type] -- Shield health scales with level
+        
+    elseif type == "COMBO_DURATION" then
+        -- Increase combo timer duration
+        self.comboMaxTime = self.comboMaxTime + 1 -- +1 second per level
+    end
+    
+    -- Fire powerup applied event
+    Events.fire("playerPowerupApplied", {
+        player = self,
+        type = type,
+        level = self.powerupLevels[type]
+    })
+    
+    return self.powerupLevels[type]
+end
+
+-- Method to show XP popup text
+function Player:showXpPopup(amount)
+    self.xpPopupText = "+" .. amount .. " XP"
+    self.xpPopupTimer = 1.5 -- Duration in seconds
+    self.xpPopupX = self.x + self.width/2
+    self.xpPopupY = self.y - 20
+    self.xpPopupScale = 1.5 -- Initial scale
+    
+    -- Fire XP popup event for sound effects
+    Events.fire("xpPopup", {
+        amount = amount,
+        x = self.xpPopupX,
+        y = self.xpPopupY
+    })
+end
+
+-- Update XP popup animation (add to existing Player:update method)
+-- Add this inside the Player:update method
+function Player:updateXpPopup(dt)
+    if self.xpPopupText and self.xpPopupTimer > 0 then
+        -- Update timer
+        self.xpPopupTimer = self.xpPopupTimer - dt
+        
+        -- Update position (float upward)
+        self.xpPopupY = self.xpPopupY - 30 * dt
+        
+        -- Update scale (shrink slightly)
+        self.xpPopupScale = math.max(1, self.xpPopupScale - 0.5 * dt)
+        
+        -- Clear when timer expires
+        if self.xpPopupTimer <= 0 then
+            self.xpPopupText = nil
+        end
+    end
+end
+
+-- Draw XP popup text (add to existing Player:draw method)
+-- Add this at the end of the Player:draw method
+function Player:drawXpPopup()
+    if self.xpPopupText and self.xpPopupTimer > 0 then
+        -- Calculate opacity based on remaining time
+        local opacity = math.min(1, self.xpPopupTimer)
+        
+        -- Get text width for centering
+        local font = love.graphics.getFont()
+        local textWidth = font:getWidth(self.xpPopupText)
+        
+        -- Draw shadow
+        love.graphics.setColor(0, 0, 0, opacity * 0.5)
+        love.graphics.print(
+            self.xpPopupText, 
+            self.xpPopupX - textWidth*self.xpPopupScale/2 + 2, 
+            self.xpPopupY + 2, 
+            0, 
+            self.xpPopupScale, 
+            self.xpPopupScale
+        )
+        
+        -- Draw text
+        love.graphics.setColor(self.xpPopupColor[1], self.xpPopupColor[2], self.xpPopupColor[3], opacity)
+        love.graphics.print(
+            self.xpPopupText, 
+            self.xpPopupX - textWidth*self.xpPopupScale/2, 
+            self.xpPopupY, 
+            0, 
+            self.xpPopupScale, 
+            self.xpPopupScale
+        )
+    end
+end
 return Player

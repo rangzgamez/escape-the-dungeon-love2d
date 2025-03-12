@@ -11,6 +11,9 @@ local TimeManager = require("lib/timeManager")
 local PowerUpManager = require('managers/powerUpManager')
 local TransitionManager = require("managers/transitionManager")
 local InputManager = require('managers/inputManager')
+local XpManager = require("managers/xpManager")
+local LevelUpMenu = require("ui/levelUpMenu")
+
 -- Mobile resolution settings
 local MOBILE_WIDTH = 390  -- iPhone screen width
 local MOBILE_HEIGHT = 844 -- iPhone screen height
@@ -25,6 +28,8 @@ local world
 local camera
 local distanceFromLava
 local enemyManager
+local xpManager
+local levelUpMenu
 local powerUpManager
 local transitionManager
 local inputManager
@@ -96,7 +101,11 @@ local function setupEventListeners()
             -data.direction.x
         )
     end)
-    
+
+    Events.on("playerCollectionRadiusChanged", function(data)
+        xpManager:setCollectionRadiusBonus(data.bonus)
+    end)
+
     Events.on("playerSpringboardJump", function(data)
         -- Create extra powerful dust effect
         particleManager:createDustEffect(
@@ -125,6 +134,7 @@ local function setupEventListeners()
         local enemy = data.enemy
         camera:onEnemyKill(data)
         timeManager:onEnemyKill(data)
+        xpManager:onEnemyKill(data)
         -- Create impact effect
         if enemy and particleManager then
             particleManager:createImpactEffect(
@@ -136,7 +146,18 @@ local function setupEventListeners()
             particleManager:createRefreshEffect(player)
         end
     end)
-    
+    Events.on("powerupSelected", function(data)
+        -- Resume game after powerup selection
+        timeManager:setTimeScale(1)
+        
+        -- Create particle effect for powerup
+        if particleManager and data.player then
+            particleManager:createRefreshEffect(data.player)
+        end
+        
+        -- Show temporary text on screen
+        -- You can add this functionality if desired
+    end)
     -- Debug state changes if debug mode is on
     if debugMode then
         Events.on("playerStateChanged", function(data)
@@ -171,6 +192,10 @@ function love.load()
     -- Initialize Time Manager
     timeManager = TimeManager:new()
 
+    xpManager = XpManager:new()
+
+    levelUpMenu = LevelUpMenu:new(player)
+
     transitionManager = TransitionManager:new()
 
     inputManager = InputManager:new() -- Initialize the new InputManager
@@ -186,10 +211,86 @@ function love.load()
     powerUpManager = PowerUpManager:new()
 
     -- Initialize collision manager
-    collisionManager = CollisionManager:new(player, platforms, springboards, particleManager)
+    collisionManager = CollisionManager:new(player, platforms, springboards, particleManager, xpManager)
     setupEventListeners()
 end
+local function updatePhysics(dt)
+    -- Clean up platforms that are below the view
+    world:cleanupPlatforms(camera, platforms, springboards)
 
+    -- Game over if player falls below camera view
+    if player.y > camera.y + love.graphics.getHeight() - 50 then
+        gameOver = true
+        gameOverReason = "FELL INTO LAVA"
+    end
+        -- Update camera position
+        distanceFromLava = camera:update(dt, player, gameSpeed)
+    
+        -- Check if player has been caught by lava
+        if camera:isPlayerCaughtByLava(player) or distanceFromLava <= 0 then
+            -- Player caught by lava - game over
+            gameOver = true
+            gameOverReason = "CAUGHT BY LAVA"
+            
+            -- Create some particle effects for burning
+            particleManager:createBurnEffect(player.x + player.width/2, player.y + player.height/2)
+            
+            -- Add some screen shake
+            camera:shake(5, 0.5)
+        end
+    
+        -- Calculate distance climbed (negative y is upward)
+        distanceClimbed = startHeight - camera.y
+    
+        -- Increase score based on height climbed
+        score = math.max(score, math.floor(distanceClimbed / 10))
+    
+        -- Gradually increase game speed based on score
+        gameSpeed = 50 + math.min(score / 10, 50)  -- Cap at 100
+    
+        -- Update player position
+        player:update(dt)
+    
+        -- Check horizontal screen bounds
+        player:checkHorizontalBounds(MOBILE_WIDTH)
+    
+        -- Generate new platforms as camera moves upward
+        world:updatePlatforms(camera, platforms, springboards)
+        
+        
+        transitionManager:update(dt)
+    
+        -- Update enemies
+        enemyManager:update(dt, player, camera)
+    
+        powerUpManager:update(dt, player, camera)
+        local powerUpMessage = powerUpManager:handleCollisions(player)
+        powerUpManager:cleanupPowerUps(camera)
+    
+        -- Handle enemy collisions and get combo info
+        local enemyHit = enemyManager:handleCollisions(player, particleManager)
+        
+        -- Add combo points to score if player has an active combo of 5 or higher
+        if player.comboCount >= 5 and player.affirmationTimer and player.affirmationTimer > player.comboMaxTime - 0.1 then
+            -- Add points based on combo level (only when combo is refreshed)
+            -- More points for higher combos, with a bonus threshold at 5
+            local comboPoints = (player.comboCount - 4) * 10  -- Start counting at 10 points for combo of 5
+            score = score + comboPoints
+        end
+    
+        -- Check for game over
+        if player.health <= 0 then
+            gameOver = true
+        end
+    
+        -- Handle collisions
+        collisionManager:handleCollisions(dt)
+    
+        -- Update springboards
+        for _, spring in ipairs(springboards) do
+            spring:update(dt)
+        end
+end
 -- Update game state (dt is "delta time" - time since last frame)
 function love.update(dt)
     if gameOver then
@@ -207,7 +308,6 @@ function love.update(dt)
 
     inputManager:update(dt, camera)
 
-    -- Handle player dragging regardless of pause state
     -- Handle player dragging regardless of pause state
     if isDragging then
         -- No need to call player:calculateTrajectory() here!
@@ -235,88 +335,31 @@ function love.update(dt)
     -- Cap dt to prevent tunneling through objects at low framerates
     dt = math.min(dt, 0.016)
 
-    -- Update camera position
-    distanceFromLava = camera:update(dt, player, gameSpeed)
-    
-    -- Check if player has been caught by lava
-    if camera:isPlayerCaughtByLava(player) or distanceFromLava <= 0 then
-        -- Player caught by lava - game over
-        gameOver = true
-        gameOverReason = "CAUGHT BY LAVA"
-        
-        -- Create some particle effects for burning
-        particleManager:createBurnEffect(player.x + player.width/2, player.y + player.height/2)
-        
-        -- Add some screen shake
-        camera:shake(5, 0.5)
+    -- Check if we need to show level-up menu
+    if player.levelUpPending and not levelUpMenu:isVisible() then
+        print('hello')
+        -- Pause the game during level-up
+        timeManager:setTimeScale(0)
+        -- Show the level-up menu
+        levelUpMenu:show()
     end
 
-    -- Calculate distance climbed (negative y is upward)
-    distanceClimbed = startHeight - camera.y
-
-    -- Increase score based on height climbed
-    score = math.max(score, math.floor(distanceClimbed / 10))
-
-    -- Gradually increase game speed based on score
-    gameSpeed = 50 + math.min(score / 10, 50)  -- Cap at 100
-
-    -- Update player position
-    player:update(dt)
-
-    -- Check horizontal screen bounds
-    player:checkHorizontalBounds(MOBILE_WIDTH)
-
-    -- Generate new platforms as camera moves upward
-    world:updatePlatforms(camera, platforms, springboards)
-    
-    
-    transitionManager:update(dt)
-
-    -- Update enemies
-    enemyManager:update(dt, player, camera)
-
-    powerUpManager:update(dt, player, camera)
-    local powerUpMessage = powerUpManager:handleCollisions(player)
-    powerUpManager:cleanupPowerUps(camera)
-
-    -- Handle enemy collisions and get combo info
-    local enemyHit = enemyManager:handleCollisions(player, particleManager)
-    
-    -- Add combo points to score if player has an active combo of 5 or higher
-    if player.comboCount >= 5 and player.affirmationTimer and player.affirmationTimer > player.comboMaxTime - 0.1 then
-        -- Add points based on combo level (only when combo is refreshed)
-        -- More points for higher combos, with a bonus threshold at 5
-        local comboPoints = (player.comboCount - 4) * 10  -- Start counting at 10 points for combo of 5
-        score = score + comboPoints
+    -- Update level-up menu if visible
+    if levelUpMenu:isVisible() then
+        levelUpMenu:update(dt)
     end
 
-    -- Check for game over
-    if player.health <= 0 then
-        gameOver = true
-    end
-
-    -- Handle collisions
-    collisionManager:handleCollisions(dt)
-
-    -- Update springboards
-    for _, spring in ipairs(springboards) do
-        spring:update(dt)
-    end
-
+    -- Always update the player's XP popup text (it's just visual)
+    player:updateXpPopup(dt)
     -- Update particle systems
     particleManager:update(dt)
-
-    -- Clean up platforms that are below the view
-    world:cleanupPlatforms(camera, platforms, springboards)
-
-    -- Game over if player falls below camera view
-    if player.y > camera.y + love.graphics.getHeight() - 50 then
-        gameOver = true
-        gameOverReason = "FELL INTO LAVA"
+    if not levelUpMenu:isVisible() then
+        updatePhysics(dt)
     end
 end
 
-function transitionToGameOver()
+
+local function transitionToGameOver()
     transitionManager:startTransition("fade", 0.5, "out", function()
         gameState = "gameover"
         -- Additional game over setup
@@ -334,6 +377,7 @@ local function restartGame()
     -- Reset player
     player = Player:new()
     startHeight = player.y
+    
     -- Clear all event listeners
     Events.clearAll()
     
@@ -347,13 +391,22 @@ local function restartGame()
     platforms = {}
     springboards = {}
     world:generateInitialPlatforms(platforms, springboards)
+    
     -- Reset enemy manager
     enemyManager = EnemyManager:new()
     enemyManager:generateInitialEnemies()
+    
+    -- Reset XP manager - THIS IS IMPORTANT
+    xpManager = XpManager:new()
+    
     -- Update collision manager with new objects
-    collisionManager = CollisionManager:new(player, platforms, springboards, particleManager)
+    collisionManager = CollisionManager:new(player, platforms, springboards, particleManager, xpManager)
+    
+    -- Reset levelUpMenu with new player reference
+    levelUpMenu = LevelUpMenu:new(player)
+    
+    -- Re-establish event listeners
     setupEventListeners()
-
 end
 
 -- Handle key presses
@@ -379,6 +432,11 @@ end
 
 -- Mouse pressed (start drag)
 function love.mousepressed(x, y, button)
+    -- Check if level-up menu is active first
+    if levelUpMenu:isVisible() then
+        levelUpMenu:mousepressed(x, y, button)
+        return
+    end
     -- Check if clicking on settings UI
     if settingsVisible then
         -- Check if clicking on slow down option
@@ -408,6 +466,10 @@ end
 
 -- Mouse moved (update drag)
 function love.mousemoved(x, y)
+    if levelUpMenu:isVisible() then
+        levelUpMenu:mousemoved(x, y)
+        return
+    end
     if not gameOver then
         inputManager:mousemoved(x, y, camera, player)
     end
@@ -422,6 +484,10 @@ end
 
 -- Touch controls for mobile devices
 function love.touchpressed(id, x, y)
+    if levelUpMenu:isVisible() then
+        levelUpMenu:touchpressed(id, x, y)
+        return
+    end
     -- Check if clicking on settings UI
     if settingsVisible then
         -- Check if clicking on slow down option
@@ -573,6 +639,20 @@ function love.draw()
         love.graphics.print("Click and drag to jump", 10, 50)
         love.graphics.print("Pull back and release to launch", 10, 70)
         love.graphics.print("Jump in air for double-jump", 10, 90)
+    end
+
+    xpManager:draw()
+    player:drawXpPopup()
+
+    love.graphics.setColor(0.2, 0.2, 0.2)
+    love.graphics.rectangle("fill", 10, 80, 100, 10)
+    love.graphics.setColor(0.2, 0.8, 1)  -- Light blue
+    love.graphics.rectangle("fill", 10, 80, 100 * (player.experience / player.xpToNextLevel), 10)
+    love.graphics.setColor(1, 1, 1)
+    love.graphics.print("Level " .. player.level, 115, 77)
+    -- IMPORTANT: Draw level-up menu LAST to ensure it appears on top of everything
+    if levelUpMenu:isVisible() then
+        levelUpMenu:draw()
     end
     transitionManager:draw()
 
