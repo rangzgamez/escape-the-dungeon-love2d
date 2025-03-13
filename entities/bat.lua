@@ -1,14 +1,17 @@
 -- bat.lua - Bat enemy for Love2D Vertical Jumper
+local BaseEntity = require("entities/baseEntity")
 
-local Bat = {}
+local Bat = setmetatable({}, {__index = BaseEntity})
 Bat.__index = Bat
 
 function Bat:new(x, y)
-    local self = setmetatable({}, Bat)
-    
-    -- Position and dimensions
-    self.x = x
-    self.y = y
+    local self = BaseEntity:new(x, y, 24, 24, {
+        type = "enemy",
+        collisionLayer = "enemy",
+        collidesWithLayers = {"player"},
+    })
+    setmetatable(self, Bat)
+
     self.radius = 12 -- Main body radius
     self.width = self.radius * 2 -- For collision detection
     self.height = self.radius * 2 -- For collision detection
@@ -17,9 +20,6 @@ function Bat:new(x, y)
     self.speed = 70 -- Slower to give player time to react
     self.maxSpeed = 120 -- Maximum speed when chasing
     self.detectionRadius = 200 -- How far the bat can "see" the player
-    self.xVelocity = 0
-    self.yVelocity = 0
-    
     -- Animation properties
     self.wingAngle = 0
     self.wingSpeed = 10 -- Wing flap speed
@@ -35,11 +35,13 @@ function Bat:new(x, y)
     self.patrolTimer = 0
     self.patrolDirection = {x = love.math.random(-1, 1), y = love.math.random(-1, 1)}
     self.patrolDuration = love.math.random(1, 3) -- Random patrol time
-    
     return self
 end
 
 function Bat:update(dt, player)
+    -- Skip update if not active
+    if not self.active then return end
+    
     -- Update wing animation
     self:updateWings(dt)
     
@@ -54,22 +56,22 @@ function Bat:update(dt, player)
         self:patrol(dt)
     end
     
-    -- Apply movement
-    self.x = self.x + self.xVelocity * dt
-    self.y = self.y + self.yVelocity * dt
+    -- Apply velocity (but don't call BaseEntity.update since we handle physics ourselves)
+    self.x = self.x + self.velocity.x * dt
+    self.y = self.y + self.velocity.y * dt
 end
 
 function Bat:updateStunned(dt)
     self.stunnedTime = self.stunnedTime - dt
     -- Apply gravity when stunned
-    self.yVelocity = self.yVelocity + 800 * dt
+    self.velocity.y = self.velocity.y + 800 * dt
     
     -- Recover from stunned state
     if self.stunnedTime <= 0 then
         self.state = "idle"
         -- Reset velocity when recovering
-        self.xVelocity = 0
-        self.yVelocity = 0
+        self.velocity.x = 0
+        self.velocity.y = 0
     end
 end
 
@@ -112,8 +114,8 @@ function Bat:chasePlayer(dt, player)
                       (1 - math.min(distance, self.detectionRadius) / self.detectionRadius)
     
     -- Set velocity towards player
-    self.xVelocity = dx * chaseSpeed
-    self.yVelocity = dy * chaseSpeed
+    self.velocity.x = dx * chaseSpeed
+    self.velocity.y = dy * chaseSpeed
     
     -- Increase wing speed during chase
     self.wingSpeed = 15
@@ -132,8 +134,8 @@ function Bat:patrol(dt)
     end
     
     -- Set patrol velocity (slower than chase)
-    self.xVelocity = self.patrolDirection.x * self.speed * 0.5
-    self.yVelocity = self.patrolDirection.y * self.speed * 0.5
+    self.velocity.x = self.patrolDirection.x * self.speed * 0.5
+    self.velocity.y = self.patrolDirection.y * self.speed * 0.5
     
     -- Normal wing speed during patrol
     self.wingSpeed = 10
@@ -143,8 +145,8 @@ function Bat:stun()
     self.state = "stunned"
     self.stunnedTime = self.stunnedDuration
     -- Bounce effect when stunned
-    self.yVelocity = -300
-    self.xVelocity = love.math.random(-100, 100)
+    self.velocity.y = -300
+    self.velocity.x = love.math.random(-100, 100)
 end
 
 function Bat:draw()
@@ -224,14 +226,5 @@ function Bat:drawBatBody(upsideDown)
     )
 end
 
--- For collision detection
-function Bat:getBounds()
-    return {
-        x = self.x,
-        y = self.y,
-        width = self.radius * 2,
-        height = self.radius * 2
-    }
-end
 
 return Bat

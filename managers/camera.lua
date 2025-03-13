@@ -66,9 +66,9 @@ function Camera:update(dt, player, gameSpeed)
     local playerScreenPosition = player.y - self.y + love.graphics.getHeight() / 2
     
     -- If player is too high in the view, adjust camera to follow
-    if playerScreenPosition < 250 then
+    if playerScreenPosition < 450 then
         -- Calculate the target Y to keep player at the desired height
-        local targetY = player.y - 250 + love.graphics.getHeight() / 2
+        local targetY = player.y - 450 + love.graphics.getHeight() / 2
         
         -- Only apply smoothing for player following, not for base scrolling
         self.y = self.y + (targetY - self.y) * self.smoothness

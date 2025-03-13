@@ -20,6 +20,9 @@ function ParticleManager:new()
 end
 
 function ParticleManager:createDustEffect(x, y, height)
+    -- Check if particles are disabled globally
+    if _G.disableParticles then return end
+    
     -- Check if the canvas exists
     if not self.dustCanvas then return end
     
@@ -44,6 +47,9 @@ function ParticleManager:createDustEffect(x, y, height)
 end
 
 function ParticleManager:createDashEffect(player, direction)
+    -- Check if particles are disabled globally
+    if _G.disableParticles then return end
+    
     -- Check if the canvas exists
     if not self.dustCanvas then return end
     
@@ -79,6 +85,9 @@ function ParticleManager:createDashEffect(player, direction)
 end
 
 function ParticleManager:createDoubleJumpEffect(player)
+    -- Check if particles are disabled globally
+    if _G.disableParticles then return end
+    
     -- Check if the canvas exists
     if not self.dustCanvas then return end
     
@@ -125,8 +134,12 @@ function ParticleManager:draw()
         love.graphics.draw(p.system)
     end
 end
+
 -- Add this function to particleManager.lua
 function ParticleManager:createRefreshEffect(player)
+    -- Check if particles are disabled globally
+    if _G.disableParticles then return end
+    
     -- Check if the canvas exists
     if not self.dustCanvas then return end
     
@@ -152,7 +165,11 @@ function ParticleManager:createRefreshEffect(player)
         timer = 0.8  -- How long to keep this particle system
     })
 end
+
 function ParticleManager:createImpactEffect(x, y)
+    -- Check if particles are disabled globally
+    if _G.disableParticles then return end
+    
     -- Check if the canvas exists
     if not self.dustCanvas then return end
     
@@ -177,6 +194,9 @@ function ParticleManager:createImpactEffect(x, y)
 end
 
 function ParticleManager:createBurnEffect(x, y)
+    -- Check if particles are disabled globally
+    if _G.disableParticles then return end
+    
     -- Check if the canvas exists
     if not self.dustCanvas then return end
     

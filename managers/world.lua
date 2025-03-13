@@ -6,6 +6,8 @@ World.__index = World
 local Platform = require("entities/platform")
 local Springboard = require("entities/springboard")
 local PowerUpManager = require("managers/powerUpManager")
+local CollisionManager = require("managers/collisionManager")
+
 function World:new()
     local self = setmetatable({}, World)
     
@@ -54,28 +56,50 @@ function World:generateNextPlatform(platforms, springboards)
     table.insert(platforms, platform)
     self.highestPlatformY = platformY
     self.powerUpManager:tryPlatformSpawn(platform)
-
+    local springboard = nil
     -- Randomly add a springboard to the platform
     if love.math.random() < self.springboardChance then
         local springX = platformX + platformWidth/2 - 25  -- Center on platform
-        table.insert(springboards, Springboard:new(springX, platformY - 20, 50, 20))
+        springboard = Springboard:new(springX, platformY - 20, 50, 20)
+        table.insert(springboards, springboard)
     end
+    return platform, springboard
 end
 
 function World:updatePlatforms(camera, platforms, springboards)
+    local newPlatforms = {}
+    local newSpringboards = {}
+    
     -- Generate new platforms if needed
     while self.highestPlatformY > camera.y - self.generationDistance do
-        self:generateNextPlatform(platforms, springboards)
+        local platform, springboard = self:generateNextPlatform(platforms, springboards)
+        
+        if platform then
+            table.insert(newPlatforms, platform)
+            -- Add new platform to collision system
+            CollisionManager.addEntity(platform)
+        end
+        
+        if springboard then
+            table.insert(newSpringboards, springboard)
+            -- Add new springboard to collision system
+            CollisionManager.addEntity(springboard)
+        end
     end
+    
+    return newPlatforms, newSpringboards
 end
 
-function World:cleanupPlatforms(camera, platforms, springboards)
+function World:cleanupPlatforms(camera, platforms, springboards, removeCallback)
     -- Remove platforms and springboards that are too far below the camera
-    local removalThreshold = camera.y + love.graphics.getHeight()
+    local removalThreshold = camera.y + love.graphics.getHeight() * 1.5
     
     -- Remove old platforms
     for i = #platforms, 1, -1 do
         if platforms[i].y > removalThreshold then
+            if removeCallback then
+                removeCallback(platforms[i])
+            end
             table.remove(platforms, i)
         end
     end
@@ -83,6 +107,9 @@ function World:cleanupPlatforms(camera, platforms, springboards)
     -- Remove old springboards
     for i = #springboards, 1, -1 do
         if springboards[i].y > removalThreshold then
+            if removeCallback then
+                removeCallback(springboards[i])
+            end
             table.remove(springboards, i)
         end
     end

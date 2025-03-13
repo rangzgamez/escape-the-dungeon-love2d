@@ -4,63 +4,42 @@ local StateMachine = require("states/stateMachine")
 local GroundedState = require("states/groundedState")
 local FallingState = require("states/fallingState")
 local DashingState = require("states/dashingState")
+local BaseEntity = require("entities/baseEntity")
 
-local Player = {}
+local Player = setmetatable({}, {__index = BaseEntity})
 Player.__index = Player
 
 function Player:new(x, y)
-    local self = setmetatable({}, Player)
-    
-    -- Position and dimensions (smaller for mobile screens)
-    self.x = x or love.graphics.getWidth() / 2 - 12  -- Center horizontally
-    self.y = y or love.graphics.getHeight() - 100    -- Start near bottom
-    self.width = 24  -- Smaller for mobile
-    self.height = 48 -- Smaller for mobile
-    
-    -- Movement
-    self.xVelocity = 0
-    self.yVelocity = 0
-    self.horizontalSpeed = 300
-    
+    -- Create with player-specific options
+    local self = BaseEntity.new(self, x, y, 24, 48, {
+        type = "player",
+        collisionLayer = "player",
+        collidesWithLayers = {"platform", "enemy", "powerup", "collectible"}
+    })
+    self.gravity = 1800
     -- Dash properties
     self.dashSpeed = 1500 -- Much faster dash
     self.minDashDuration = 0.001 -- Minimum dash time
     self.maxDashDuration = 0.2 -- Maximum dash time
-    self.dashTimeLeft = 0 -- Current dash timer
-    self.dashDirection = {x = 0, y = 0} -- Direction of current dash
-    self.gravityAfterDash = 1800 -- Stronger gravity after dash ends
-    self.gravity = 1800 -- Default gravity
-    
-    -- Original jump mechanics (keeping for reference)
-    self.jumpStrength = 600
-    self.springJumpStrength = 1000
-    
-    -- State tracking (for FSM reference/compatibility)
-    self.onGround = false
-    
+
     -- Midair jumps system
     self.maxMidairJumps = 1  -- Default: one midair jump (can be increased by powerups)
     self.midairJumps = self.maxMidairJumps  -- Current available midair jumps
-    
-    -- Trajectory preview
-    self.trajectoryPoints = {}
-    self.trajectoryPointCount = 20  -- Number of points to calculate for trajectory
-    self.trajectoryTimeStep = 0.1   -- Time between trajectory points
-    
+
     -- Player damage
     self.health = 3 -- Player health
     self.invulnerableTime = 0 -- Invulnerability timer
     self.invulnerableDuration = 1.5 -- Time invulnerable after taking damage
     self.isInvulnerable = false -- Invulnerability flag
     self.damageFlashTimer = 0 -- For damage flash effect
-    
+
     -- After-image effect for dashing
     self.afterImagePositions = {} -- Initialize this array at creation
-    
+
     -- Combo system
     self.comboCount = 0
     self.lastComboY = 0 -- Track Y position for combo
-    
+
     -- Combo display variables
     self.comboText = nil -- Text to display
     self.comboTimer = 0 -- Timer for combo text display
@@ -71,7 +50,7 @@ function Player:new(x, y)
     self.comboY = 0 -- Y position for text
     self.comboOffsetX = 0 -- Animation offset X
     self.comboOffsetY = 0 -- Animation offset Y
-    
+
     -- Affirmation text variables
     self.affirmationText = nil -- Random affirmation to display
     self.affirmationTimer = 0
@@ -108,7 +87,7 @@ function Player:new(x, y)
     
     -- Start in the grounded state (on ground)
     self.stateMachine:change("Falling")
-
+    setmetatable(self, Player)
     return self
 end
 
@@ -150,11 +129,11 @@ function Player:deductJump()
     return self.midairJumps
 end
 
-function Player:enemyCollision(data)
-    -- Handle collision based on player state
-    local enemy = data.enemy
-    self.stateMachine:getCurrentState():enemyCollision(enemy)
-end
+-- function Player:enemyCollision(data)
+--     -- Handle collision based on player state
+--     local enemy = data.enemy
+--     self.stateMachine:getCurrentState():enemyCollision(enemy)
+-- end
 
 -- Draw function
 function Player:draw()
@@ -175,14 +154,46 @@ function Player:draw()
     end
 end
 
--- For collision detection
-function Player:getBounds()
-    return {
-        x = self.x,
-        y = self.y,
-        width = self.width,
-        height = self.height
-    }
+function Player:onCollision(other, collisionData)
+    -- Let the current state handle collision if it wants to
+    local state = self.stateMachine:getCurrentState()
+    
+    -- Default behavior for collisions based on entity type
+    if other.type == "platform" then
+        -- Only handle collision if coming from above and moving downward
+        if self.velocity.y > 0 then  -- Player is moving downward
+            local playerBottom = self.y + self.height
+            local platformTop = other.y
+            
+            -- Check if player's bottom is close to platform's top
+            if math.abs(playerBottom - platformTop) < 20 then  -- Increased threshold for better detection
+                -- Snap to platform
+                self.y = other.y - self.height
+                self.velocity.y = 0
+                self.onGround = true
+                self:landOnGround()
+                return true
+            end
+        end
+    elseif other.type == "enemy" then
+        local enemy = other
+        self.stateMachine:getCurrentState():enemyCollision(enemy)
+    elseif other.type == "xpPellet" then
+        -- Handle XP collection
+        if other.collectible then
+            -- Get the XP value from the pellet
+            local xpValue = other.value or 1
+            
+            -- Add the experience to the player
+            self:addExperience(xpValue)
+            
+            -- The pellet will mark itself as inactive in its own onCollision method
+            return true
+        end
+    end
+    
+    -- Let base class handle remaining cases
+    return BaseEntity.onCollision(self, other, collisionData)
 end
 
 -- Handle damage

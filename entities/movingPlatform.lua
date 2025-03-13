@@ -1,9 +1,12 @@
-local Platform = require("platform")
+-- entities/movingPlatform.lua
+local Platform = require("entities/platform")
+
 local MovingPlatform = setmetatable({}, {__index = Platform})
 MovingPlatform.__index = MovingPlatform
 
 function MovingPlatform:new(x, y, width, height, speed, distance)
     local self = Platform.new(self, x, y, width, height)
+    self.type = "movingPlatform"
     
     self.startX = x
     self.speed = speed or 50
@@ -14,6 +17,9 @@ function MovingPlatform:new(x, y, width, height, speed, distance)
 end
 
 function MovingPlatform:update(dt)
+    -- Moving platforms don't use default physics
+    -- so we don't call BaseEntity.update
+    
     -- Move platform back and forth
     self.x = self.x + self.speed * self.direction * dt
     

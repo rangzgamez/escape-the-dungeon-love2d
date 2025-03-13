@@ -14,8 +14,8 @@ function GroundedState:enter(prevState)
     -- Call parent method to fire state change event
     BaseState.enter(self, prevState)
     -- Reset velocity and set onGround
-    self.player.xVelocity = 0
-    self.player.yVelocity = 0
+    self.player.velocity.x = 0
+    self.player.velocity.y = 0
     self.player.onGround = true
     -- Reset midair jumps when landing
     self.player:refreshJumps()
@@ -34,11 +34,11 @@ function GroundedState:onDragEnd(data)
 end
 function GroundedState:update(dt)
     -- Handle horizontal movement (keyboard controls)
-    self.player.xVelocity = 0
-    self.player.yVelocity = 0
+    self.player.velocity.x = 0
+    self.player.velocity.y = 0
 
     -- Apply velocities to position
-    self.player.x = self.player.x + self.player.xVelocity * dt
+    self.player.x = self.player.x + self.player.velocity.x * dt
         
     -- Reset combo if on ground with active combo
     if self.player.comboCount > 0 then
@@ -48,7 +48,7 @@ end
 
 function GroundedState:onLeftGround()
     -- Change to falling state
-    if self.player.yVelocity > 5 then
+    if self.player.velocity.y > 5 then
         -- Change to falling state
         self.player.stateMachine:change("Falling")
     end
@@ -58,13 +58,13 @@ function GroundedState:checkHorizontalBounds(screenWidth)
     -- Left boundary
     if self.player.x < 0 then
         self.player.x = 0
-        self.player.xVelocity = 0
+        self.player.velocity.x = 0
     end
     
     -- Right boundary
     if self.player.x + self.player.width > screenWidth then
         self.player.x = screenWidth - self.player.width
-        self.player.xVelocity = 0
+        self.player.velocity.x = 0
     end
 end
 

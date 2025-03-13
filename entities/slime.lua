@@ -1,26 +1,32 @@
--- slime.lua - Slime enemy for Love2D Vertical Jumper
+-- entities/slime.lua
+local BaseEntity = require("entities/baseEntity")
 local Events = require("lib/events")
 
-local Slime = {}
+local Slime = setmetatable({}, {__index = BaseEntity})
 Slime.__index = Slime
 
 function Slime:new(x, y, platform)
-    local self = setmetatable({}, Slime)
+    -- Create with BaseEntity first
+    local self = BaseEntity:new(x, y, 32, 20, {
+        type = "enemy",
+        collisionLayer = "enemy",
+        collidesWithLayers = {"player"},
+    })
+    
+    -- Now set metatable to Slime
+    setmetatable(self, Slime)
     
     -- Store reference to the platform this slime patrols on
     self.platform = platform
     
-    -- Position and dimensions
-    self.x = x
-    self.width = 32
-    self.height = 20
-    self.y = platform and (platform.y - self.height) or y -- Position on top of platform
-
+    -- Reposition on top of platform if provided
+    if platform then
+        self.y = platform.y - self.height
+    end
+    
     -- Movement properties
     self.patrolSpeed = 40
-    self.xVelocity = 0
-    self.yVelocity = 0
-    self.gravity = 800 -- Only used when stunned
+    self.gravityValue = 800 -- Only used when stunned
     
     -- Patrol behavior
     self.state = "patrolling"  -- patrolling or stunned
@@ -48,6 +54,9 @@ function Slime:new(x, y, platform)
 end
 
 function Slime:update(dt, player)
+    -- Skip update if not active
+    if not self.active then return end
+    
     -- Update animation
     self:updateAnimation(dt)
     
@@ -77,9 +86,9 @@ function Slime:update(dt, player)
         self:updatePatrolling(dt, player)
     end
     
-    -- Apply movement
-    self.x = self.x + self.xVelocity * dt
-    self.y = self.y + self.yVelocity * dt
+    -- No need to call BaseEntity.update - we handle movement ourselves
+    -- Note: We're using our own state-based physics instead of BaseEntity's
+    -- But we're still using BaseEntity properties like x, y, and velocity
     
     -- If not stunned, ensure slime stays on platform
     if self.state ~= "stunned" and self.platform then
@@ -101,7 +110,7 @@ function Slime:updateAnimation(dt)
     -- Handle squish/stretch animation based on state and movement
     if self.state == "patrolling" then
         -- When moving, squish slightly with movement
-        if self.xVelocity ~= 0 then
+        if self.velocity.x ~= 0 then
             -- Oscillate squish based on movement
             self.squishFactor = 1 + 0.1 * math.sin(love.timer.getTime() * 5)
         else
@@ -118,14 +127,18 @@ function Slime:updateStunned(dt)
     self.stunnedTime = self.stunnedTime - dt
     
     -- Apply gravity when stunned
-    self.yVelocity = self.yVelocity + self.gravity * dt
+    self.velocity.y = self.velocity.y + self.gravityValue * dt
+    
+    -- Apply movement
+    self.x = self.x + self.velocity.x * dt
+    self.y = self.y + self.velocity.y * dt
     
     -- Recover from stunned state
     if self.stunnedTime <= 0 then
         self.state = "patrolling"
         -- Reset velocity when recovering
-        self.xVelocity = 0
-        self.yVelocity = 0
+        self.velocity.x = 0
+        self.velocity.y = 0
         
         -- If we have a platform, return to it
         if self.platform then
@@ -161,13 +174,16 @@ function Slime:updatePatrolling(dt, player)
     -- Set horizontal velocity based on direction and state
     if self.aggro then
         -- Move faster when player is detected
-        self.xVelocity = self.direction * self.patrolSpeed * 1.5
+        self.velocity.x = self.direction * self.patrolSpeed * 1.5
     else
-        self.xVelocity = self.direction * self.patrolSpeed
+        self.velocity.x = self.direction * self.patrolSpeed
     end
     
     -- No vertical velocity while patrolling
-    self.yVelocity = 0
+    self.velocity.y = 0
+    
+    -- Apply horizontal movement
+    self.x = self.x + self.velocity.x * dt
 end
 
 function Slime:canDetectPlayer(player)
@@ -193,10 +209,9 @@ function Slime:stun()
     if self.state ~= "stunned" then
         self.state = "stunned"
         self.stunnedTime = self.stunnedDuration
-        
         -- Bounce effect when stunned
-        self.yVelocity = -200
-        self.xVelocity = love.math.random(-50, 50)
+        self.velocity.y = -200
+        self.velocity.x = love.math.random(-50, 50)
         
         -- Flatten animation
         self.squishFactor = 0.5
@@ -210,6 +225,9 @@ function Slime:stun()
 end
 
 function Slime:draw()
+    -- Skip if not active
+    if not self.active then return end
+    
     -- Set color based on state
     if self.state == "stunned" then
         love.graphics.setColor(0.5, 0.5, 0.5)  -- Gray when stunned
@@ -277,10 +295,11 @@ function Slime:draw()
         if self.aggro then
             -- Intense stare when aggressive
             pupilSize = eyeSize * 0.7
-            pupilOffsetX = eyeSize * 0.3 * (self.xVelocity > 0 and 1 or -1)
-        elseif self.xVelocity > 5 then
+            pupilOffsetX = eyeSize * 0.3 * (self.velocity.x > 0 and 1 or -1)
+        elseif self.velocity.x > 5 then
             pupilOffsetX = eyeSize * 0.3
-OffsetX = -eyeSize * 0.3
+        elseif self.velocity.x < -5 then
+            pupilOffsetX = -eyeSize * 0.3
         end
         
         -- Draw the pupils
@@ -306,13 +325,14 @@ OffsetX = -eyeSize * 0.3
     end
 end
 
-function Slime:getBounds()
-    return {
-        x = self.x,
-        y = self.y,
-        width = self.width,
-        height = self.height
-    }
+-- Override onCollision to handle player collision
+function Slime:onCollision(other, collisionData)
+    if other.type == "player" then
+        -- Let the collision system handle it based on player state
+        return false
+    end
+    
+    return false
 end
 
 return Slime

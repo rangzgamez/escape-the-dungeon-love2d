@@ -9,19 +9,16 @@ EnemyManager.__index = EnemyManager
 function EnemyManager:new()
     local self = setmetatable({}, EnemyManager)
     
-    self.enemies = {}
-    self.bats = {}
-    self.slimes = {}
-
+    self.enemies = {} -- Single array for all enemy types
+    
     -- Enemy generation parameters
     self.minEnemyY = 0
     self.lastEnemyY = love.graphics.getHeight()
-    self.enemySpawnInterval = 200 -- Vertical distance between enemy spawns
-    self.batChance = 0.7 -- 70% chance to spawn a bat (reduced to make room for slimes)
+    self.enemySpawnInterval = 200
+    self.batChance = 0.7
     self.slimeChance = 0.4 -- 40% chance to spawn a slime
     self.screenWidth = love.graphics.getWidth()
-    self.generationDistance = 1000 -- Generate enemies this far ahead of camera
-    
+    self.generationDistance = 1000
     -- Store platforms reference (will be set in update)
     self.platforms = nil
 
@@ -39,20 +36,15 @@ function EnemyManager:generateInitialEnemies(platforms)
 end
 
 function EnemyManager:generateEnemy()
-    -- Generate enemy at a position above the last one
+    -- Generate enemy position
     local enemyY = self.lastEnemyY - self.enemySpawnInterval + love.math.random(-50, 50)
     local enemyX = love.math.random(50, self.screenWidth - 50)
     
-    -- Create a bat (flying enemy)
+    -- Create an enemy based on random chance
+    local enemy = nil
     if love.math.random() < self.batChance then
-        local bat = Bat:new(enemyX, enemyY)
-        table.insert(self.bats, bat)
-        table.insert(self.enemies, bat)
-    end
-
-    -- Create a slime (platform-bound enemy)
-    -- Only spawn slimes if we have platforms
-    if self.platforms and #self.platforms > 0 and love.math.random() < self.slimeChance then
+        enemy = Bat:new(enemyX, enemyY)
+    elseif self.platforms and #self.platforms > 0 and love.math.random() < self.slimeChance then
         -- Find a suitable platform for the slime
         local platformIndex = self:findPlatformNearY(enemyY)
         
@@ -63,15 +55,19 @@ function EnemyManager:generateEnemy()
             local slimeX = platform.x + love.math.random(10, platform.width - 40) -- Keep away from edges
             local slimeY = platform.y - 20 -- Height of slime
             
-            local slime = Slime:new(slimeX, slimeY, platform)
-            table.insert(self.slimes, slime)
-            table.insert(self.enemies, slime)
+            enemy = Slime:new(slimeX, slimeY, platform)
         end
     end
     
-    -- Update the highest enemy position
+    -- Only insert if we created an enemy
+    if enemy then
+        table.insert(self.enemies, enemy)
+    end
+    
+    -- Update positions
     self.lastEnemyY = enemyY
     self.minEnemyY = math.min(self.minEnemyY, enemyY)
+    return enemy
 end
 
 -- Find a platform close to a specific Y coordinate
@@ -122,10 +118,10 @@ function EnemyManager:update(dt, player, camera)
             self.platforms = _G.platforms
         end
     end
-    
+    local enemy = nil;
     -- Generate new enemies if needed
     while self.minEnemyY > camera.y - self.generationDistance do
-        self:generateEnemy()
+        enemy = self:generateEnemy()
     end
     
     -- Update all enemies
@@ -133,73 +129,60 @@ function EnemyManager:update(dt, player, camera)
         enemy:update(dt, player)
     end
     
-    -- Cleanup enemies that are too far below the camera
-    self:cleanupEnemies(camera)
+    return enemy
 end
 
-function EnemyManager:cleanupEnemies(camera)
+function EnemyManager:cleanupEnemies(camera, removeCallback)
     local removalThreshold = camera.y + love.graphics.getHeight() * 1.5
     
     for i = #self.enemies, 1, -1 do
         local enemy = self.enemies[i]
         
         if enemy.y > removalThreshold then
-            -- Find and remove from specific enemy type table
-            if enemy.radius then -- It's a bat
-                for j = #self.bats, 1, -1 do
-                    if self.bats[j] == enemy then
-                        table.remove(self.bats, j)
-                        break
-                    end
-                end
-            elseif enemy.platform then -- It's a slime
-                for j = #self.slimes, 1, -1 do
-                    if self.slimes[j] == enemy then
-                        table.remove(self.slimes, j)
-                        break
-                    end
-                end
+            -- Call the removal callback if provided
+            if removeCallback then
+                removeCallback(enemy)
             end
             
-            -- Remove from main enemies table
+            -- Remove from the main enemies table
             table.remove(self.enemies, i)
         end
     end
 end
 
-function EnemyManager:handleCollisions(player, particleManager)
-    local enemyHit = false
+-- function EnemyManager:handleCollisions(player, particleManager)
+--     local enemyHit = false
     
-    for _, enemy in ipairs(self.enemies) do
-        if enemy.state == 'stunned' then
-            goto continue
-        end
-        if self:checkCollision(player, enemy)then
-            -- Fire an event for the collision instead of calling a method
-            local eventData = {
-                enemy = enemy,
-                comboCount = player.comboCount,
-            }
+--     for _, enemy in ipairs(self.enemies) do
+--         if enemy.state == 'stunned' then
+--             goto continue
+--         end
+--         if self:checkCollision(player, enemy)then
+--             -- Fire an event for the collision instead of calling a method
+--             local eventData = {
+--                 enemy = enemy,
+--                 comboCount = player.comboCount,
+--             }
             
-            -- Fire the event and let listeners handle it
-            Events.fire("enemyCollision", eventData)
+--             -- Fire the event and let listeners handle it
+--             Events.fire("enemyCollision", eventData)
             
-        end
-        ::continue::
-    end
+--         end
+--         ::continue::
+--     end
     
-    return enemyHit
-end
+--     return enemyHit
+-- end
 
-function EnemyManager:checkCollision(a, b)
-    local aBounds = a.getBounds and a:getBounds() or a
-    local bBounds = b.getBounds and b:getBounds() or b
+-- function EnemyManager:checkCollision(a, b)
+--     local aBounds = a.getBounds and a:getBounds() or a
+--     local bBounds = b.getBounds and b:getBounds() or b
     
-    return aBounds.x < bBounds.x + bBounds.width and
-           aBounds.x + aBounds.width > bBounds.x and
-           aBounds.y < bBounds.y + bBounds.height and
-           aBounds.y + aBounds.height > bBounds.y
-end
+--     return aBounds.x < bBounds.x + bBounds.width and
+--            aBounds.x + aBounds.width > bBounds.x and
+--            aBounds.y < bBounds.y + bBounds.height and
+--            aBounds.y + aBounds.height > bBounds.y
+-- end
 
 function EnemyManager:draw()
     for _, enemy in ipairs(self.enemies) do

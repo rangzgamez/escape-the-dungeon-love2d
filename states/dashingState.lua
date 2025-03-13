@@ -74,8 +74,8 @@ function DashingState:update(dt)
     -- End dash when timer runs out
     if self.dashTimeLeft <= 0 then
         -- Set velocities for transition to falling
-        self.player.xVelocity = self.dashDirection.x * self.player.dashSpeed * 0.2 * self.dashPower
-        self.player.yVelocity = 0
+        self.player.velocity.x = self.dashDirection.x * self.player.dashSpeed * 0.2 * self.dashPower
+        self.player.velocity.y = 0
         
         -- Change to falling state
         self.player.stateMachine:change("Falling")
@@ -87,8 +87,8 @@ function DashingState:checkHorizontalBounds(screenWidth)
         self.player.x = 0
         
         -- Bounce off wall by reversing horizontal direction
-        if self.player.dashDirection.x < 0 then
-            self.player.dashDirection.x = -self.player.dashDirection.x
+        if self.dashDirection.x < 0 then
+            self.dashDirection.x = -self.dashDirection.x
         end
     end
     
@@ -97,8 +97,8 @@ function DashingState:checkHorizontalBounds(screenWidth)
         self.player.x = screenWidth - self.player.width
         
         -- Bounce off wall by reversing horizontal direction
-        if self.player.dashDirection.x > 0 then
-            self.player.dashDirection.x = -self.player.dashDirection.x
+        if self.dashDirection.x > 0 then
+            self.dashDirection.x = -self.dashDirection.x
         end
     end
 end
@@ -106,13 +106,11 @@ end
 function DashingState:enemyCollision(enemy)
     -- Player dashing into enemy - stun the enemy
     enemy:stun()
-    
     -- Fire enemy kill event with combo count
     self.events.fire("enemyKill", {
         comboCount = self.player.comboCount,
         enemy = enemy
     })
-    
     -- Refresh the player's dash
     self.player:refreshJumps() -- CORRECTED METHOD NAME
     
@@ -142,8 +140,8 @@ function DashingState:draw()
         love.graphics.line(
             self.player.x + self.player.width/2, 
             self.player.y + self.player.height/2,
-            self.player.x + self.player.width/2 - self.player.dashDirection.x * dashLength,
-            self.player.y + self.player.height/2 - self.player.dashDirection.y * dashLength
+            self.player.x + self.player.width/2 - self.dashDirection.x * dashLength,
+            self.player.y + self.player.height/2 - self.dashDirection.y * dashLength
         )
     end
 end

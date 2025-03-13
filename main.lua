@@ -8,7 +8,6 @@ local Camera = require("managers/camera")
 local EnemyManager = require("managers/enemyManager")
 local Events = require("lib/events")
 local TimeManager = require("lib/timeManager")
-local PowerUpManager = require('managers/powerUpManager')
 local TransitionManager = require("managers/transitionManager")
 local InputManager = require('managers/inputManager')
 local XpManager = require("managers/xpManager")
@@ -23,7 +22,6 @@ local player
 local platforms = {}
 local springboards = {}
 local particleManager
-local collisionManager
 local world
 local camera
 local distanceFromLava
@@ -49,6 +47,14 @@ local settingsVisible = true  -- Toggle for settings menu visibility
 local slowDownWhileDragging = false  -- Option to slow time during drag
 local pauseWhileDragging = true  -- Option to pause game during drag
 local slowDownFactor = 0.3  -- Game runs at 30% speed when dragging
+
+-- Debug variables
+local showDebugInfo = false
+local debugInfoTimer = 0
+local debugInfoInterval = 1 -- Update debug info every second
+local debugMode = true -- Enable debug features
+local disableParticles = true -- Debug option to disable particle effects
+local showCollisionBounds = true -- Debug option to show collision bounds
 
 -- Setup event handlers for player state changes
 local function setupEventListeners()
@@ -134,7 +140,14 @@ local function setupEventListeners()
         local enemy = data.enemy
         camera:onEnemyKill(data)
         timeManager:onEnemyKill(data)
-        xpManager:onEnemyKill(data)
+        
+        -- Get the XP pellets created from the enemy kill
+        local xpPellets = xpManager:onEnemyKill(data)
+        
+        -- XP pellets are already added to the collision manager in their constructor
+        -- through BaseEntity, so we don't need to add them again
+        
+        enemy.active = false
         -- Create impact effect
         if enemy and particleManager then
             particleManager:createImpactEffect(
@@ -166,29 +179,30 @@ local function setupEventListeners()
     end
 end
 
--- Load resources and initialize the game
-function love.load()
-    -- Set the window dimensions to match mobile resolution
-    love.window.setMode(MOBILE_WIDTH, MOBILE_HEIGHT)
+local function initializeWorld()
+    -- Reset game state
+    gameOver = false
+    score = 0
+    gameSpeed = 50
+    distanceClimbed = 0
 
-    -- Set the window title
-    love.window.setTitle("Love2D Vertical Jumper")
+    -- Clear all event listeners
+    Events.clearAll()
 
-    -- Set default background color
-    love.graphics.setBackgroundColor(0.1, 0.1, 0.2)
-
+    --clear collisions
+    CollisionManager.clear()
     -- Initialize particle manager
     particleManager = ParticleManager:new()
 
     -- Initialize world generator
     world = World:new()
-
     -- Generate initial platforms
+    platforms = {}
+    springboards = {}
     world:generateInitialPlatforms(platforms, springboards)
-
     -- Initialize player
     player = Player:new()
-
+    
     -- Initialize Time Manager
     timeManager = TimeManager:new()
 
@@ -208,12 +222,23 @@ function love.load()
     camera = Camera:new(player)
     startHeight = player.y
 
-    powerUpManager = PowerUpManager:new()
-
-    -- Initialize collision manager
-    collisionManager = CollisionManager:new(player, platforms, springboards, particleManager, xpManager)
     setupEventListeners()
 end
+
+-- Load resources and initialize the game
+function love.load()
+    -- Set the window dimensions to match mobile resolution
+    love.window.setMode(MOBILE_WIDTH, MOBILE_HEIGHT)
+
+    -- Set the window title
+    love.window.setTitle("Love2D Vertical Jumper")
+
+    -- Set default background color
+    love.graphics.setBackgroundColor(0.1, 0.1, 0.2)
+
+   initializeWorld()
+end
+
 local function updatePhysics(dt)
     -- Clean up platforms that are below the view
     world:cleanupPlatforms(camera, platforms, springboards)
@@ -223,73 +248,71 @@ local function updatePhysics(dt)
         gameOver = true
         gameOverReason = "FELL INTO LAVA"
     end
-        -- Update camera position
-        distanceFromLava = camera:update(dt, player, gameSpeed)
-    
-        -- Check if player has been caught by lava
-        if camera:isPlayerCaughtByLava(player) or distanceFromLava <= 0 then
-            -- Player caught by lava - game over
-            gameOver = true
-            gameOverReason = "CAUGHT BY LAVA"
-            
-            -- Create some particle effects for burning
-            particleManager:createBurnEffect(player.x + player.width/2, player.y + player.height/2)
-            
-            -- Add some screen shake
-            camera:shake(5, 0.5)
-        end
-    
-        -- Calculate distance climbed (negative y is upward)
-        distanceClimbed = startHeight - camera.y
-    
-        -- Increase score based on height climbed
-        score = math.max(score, math.floor(distanceClimbed / 10))
-    
-        -- Gradually increase game speed based on score
-        gameSpeed = 50 + math.min(score / 10, 50)  -- Cap at 100
-    
-        -- Update player position
-        player:update(dt)
-    
-        -- Check horizontal screen bounds
-        player:checkHorizontalBounds(MOBILE_WIDTH)
-    
-        -- Generate new platforms as camera moves upward
-        world:updatePlatforms(camera, platforms, springboards)
+    -- Update camera position
+    distanceFromLava = camera:update(dt, player, gameSpeed)
+
+    -- Check if player has been caught by lava
+    if camera:isPlayerCaughtByLava(player) or distanceFromLava <= 0 then
+        -- Player caught by lava - game over
+        gameOver = true
+        gameOverReason = "CAUGHT BY LAVA"
         
+        -- Create some particle effects for burning
+        particleManager:createBurnEffect(player.x + player.width/2, player.y + player.height/2)
         
-        transitionManager:update(dt)
+        -- Add some screen shake
+        camera:shake(5, 0.5)
+    end
+
+    -- Calculate distance climbed (negative y is upward)
+    distanceClimbed = startHeight - camera.y
+
+    -- Increase score based on height climbed
+    score = math.max(score, math.floor(distanceClimbed / 10))
+
+    -- Gradually increase game speed based on score
+    gameSpeed = 50 + math.min(score / 10, 50)  -- Cap at 100
+
+    -- Update player position
+    player:update(dt)
+
+    -- Check horizontal screen bounds
+    player:checkHorizontalBounds(MOBILE_WIDTH)
+
+    -- Generate new platforms as camera moves upward
+    world:updatePlatforms(camera, platforms, springboards)
+
+    xpManager:update(dt, player, camera)
+
+    transitionManager:update(dt)
+
+    -- Update enemies
+    enemyManager:update(dt, player, camera)
+
+
+    -- Handle enemy collisions and get combo info
+   -- enemyManager:handleCollisions(player, particleManager)
     
-        -- Update enemies
-        enemyManager:update(dt, player, camera)
-    
-        powerUpManager:update(dt, player, camera)
-        local powerUpMessage = powerUpManager:handleCollisions(player)
-        powerUpManager:cleanupPowerUps(camera)
-    
-        -- Handle enemy collisions and get combo info
-        local enemyHit = enemyManager:handleCollisions(player, particleManager)
-        
-        -- Add combo points to score if player has an active combo of 5 or higher
-        if player.comboCount >= 5 and player.affirmationTimer and player.affirmationTimer > player.comboMaxTime - 0.1 then
-            -- Add points based on combo level (only when combo is refreshed)
-            -- More points for higher combos, with a bonus threshold at 5
-            local comboPoints = (player.comboCount - 4) * 10  -- Start counting at 10 points for combo of 5
-            score = score + comboPoints
-        end
-    
-        -- Check for game over
-        if player.health <= 0 then
-            gameOver = true
-        end
-    
-        -- Handle collisions
-        collisionManager:handleCollisions(dt)
-    
-        -- Update springboards
-        for _, spring in ipairs(springboards) do
-            spring:update(dt)
-        end
+    -- Add combo points to score if player has an active combo of 5 or higher
+    if player.comboCount >= 5 and player.affirmationTimer and player.affirmationTimer > player.comboMaxTime - 0.1 then
+        -- Add points based on combo level (only when combo is refreshed)
+        -- More points for higher combos, with a bonus threshold at 5
+        local comboPoints = (player.comboCount - 4) * 10  -- Start counting at 10 points for combo of 5
+        score = score + comboPoints
+    end
+
+    -- Check for game over
+    if player.health <= 0 then
+        gameOver = true
+    end
+
+    -- Handle collisions
+    CollisionManager:update(dt)
+
+    -- Update springboards
+    for _, spring in ipairs(springboards) do
+        spring:update(dt)
+    end
 end
 -- Update game state (dt is "delta time" - time since last frame)
 function love.update(dt)
@@ -321,7 +344,9 @@ function love.update(dt)
             camera:update(0, player, 0)  -- Zero dt to prevent movement
             
             -- Update particle systems with zero dt to prevent animation
-            particleManager:update(0)
+            if not disableParticles then
+                particleManager:update(0)
+            end
             
             -- Special case: update combo text animations with the real dt
             player:updateComboAnimations(realDt)
@@ -337,7 +362,6 @@ function love.update(dt)
 
     -- Check if we need to show level-up menu
     if player.levelUpPending and not levelUpMenu:isVisible() then
-        print('hello')
         -- Pause the game during level-up
         timeManager:setTimeScale(0)
         -- Show the level-up menu
@@ -351,8 +375,10 @@ function love.update(dt)
 
     -- Always update the player's XP popup text (it's just visual)
     player:updateXpPopup(dt)
-    -- Update particle systems
-    particleManager:update(dt)
+    -- Update particle systems (if not disabled)
+    if not disableParticles then
+        particleManager:update(dt)
+    end
     if not levelUpMenu:isVisible() then
         updatePhysics(dt)
     end
@@ -368,45 +394,7 @@ end
 
 -- Then call setupEventHandlers() in your love.load function
 local function restartGame()
-    -- Reset game state
-    gameOver = false
-    score = 0
-    gameSpeed = 50
-    distanceClimbed = 0
-
-    -- Reset player
-    player = Player:new()
-    startHeight = player.y
-    
-    -- Clear all event listeners
-    Events.clearAll()
-    
-    -- Initialize time manager again
-    timeManager = TimeManager:new()
-    
-    -- Reset camera
-    camera = Camera:new(player)
-
-    -- Clear and regenerate platforms
-    platforms = {}
-    springboards = {}
-    world:generateInitialPlatforms(platforms, springboards)
-    
-    -- Reset enemy manager
-    enemyManager = EnemyManager:new()
-    enemyManager:generateInitialEnemies()
-    
-    -- Reset XP manager - THIS IS IMPORTANT
-    xpManager = XpManager:new()
-    
-    -- Update collision manager with new objects
-    collisionManager = CollisionManager:new(player, platforms, springboards, particleManager, xpManager)
-    
-    -- Reset levelUpMenu with new player reference
-    levelUpMenu = LevelUpMenu:new(player)
-    
-    -- Re-establish event listeners
-    setupEventListeners()
+    initializeWorld()
 end
 
 -- Handle key presses
@@ -417,11 +405,29 @@ function love.keypressed(key)
     -- Quit the game when escape is pressed
     if key == "escape" then
         love.event.quit()
-    end
-
-    -- Restart when R is pressed
-    if key == "r" and gameOver then
+    elseif key == "f1" then
+        showDebugInfo = not showDebugInfo
+    elseif key == "r" then
+        -- Reset game
         restartGame()
+    elseif key == "p" then
+        -- Toggle pause
+        if timeManager:getTimeScale() > 0 then
+            timeManager:setTimeScale(0)
+        else
+            timeManager:setTimeScale(1)
+        end
+    elseif key == "x" and debugMode then
+        -- Debug: Spawn test XP pellets
+        spawnTestXpPellets()
+    elseif key == "f2" and debugMode then
+        -- Debug: Toggle particle effects
+        disableParticles = not disableParticles
+        print("Particle effects " .. (disableParticles and "disabled" or "enabled"))
+    elseif key == "f3" and debugMode then
+        -- Debug: Toggle collision bounds
+        showCollisionBounds = not showCollisionBounds
+        print("Collision bounds " .. (showCollisionBounds and "visible" or "hidden"))
     end
 
     -- Toggle settings menu with S key
@@ -455,6 +461,18 @@ function love.mousepressed(x, y, button)
             if pauseWhileDragging then
                 slowDownWhileDragging = false
             end
+            return
+        end
+        
+        -- Check if clicking on disable particles option
+        if debugMode and x >= 10 and x <= 30 and y >= 210 and y <= 230 then
+            disableParticles = not disableParticles
+            return
+        end
+        
+        -- Check if clicking on show collision bounds option
+        if debugMode and x >= 10 and x <= 30 and y >= 240 and y <= 260 then
+            showCollisionBounds = not showCollisionBounds
             return
         end
     end
@@ -548,12 +566,30 @@ function love.draw()
 
     enemyManager:draw()
 
-    -- Draw all particle systems
-    particleManager:draw()
+    -- Draw all particle systems (if not disabled)
+    if not disableParticles then
+        particleManager:draw()
+    end
 
     -- Draw the player
     player:draw()
-
+    
+    -- Get bounds from collision manager
+    local debugBounds = CollisionManager.getDebugBounds()
+    
+    -- Draw all collision bounds if enabled
+    if showCollisionBounds then
+        for _, info in ipairs(debugBounds) do
+            love.graphics.setColor(info.color)
+            love.graphics.rectangle("line", 
+                info.bounds.x, 
+                info.bounds.y, 
+                info.bounds.width, 
+                info.bounds.height
+            )
+        end
+    end
+    
     love.graphics.pop()
 
     camera:drawLava()
@@ -579,6 +615,19 @@ function love.draw()
         elseif slowDownWhileDragging then
             love.graphics.setColor(1, 0.5, 0)
             love.graphics.print("SLOW-MO", MOBILE_WIDTH - 80, 10)
+        end
+    end
+    
+    -- Show debug indicators
+    if debugMode then
+        if disableParticles then
+            love.graphics.setColor(0.8, 0.8, 0)
+            love.graphics.print("PARTICLES OFF (F2)", MOBILE_WIDTH - 150, 30)
+        end
+        
+        if showCollisionBounds then
+            love.graphics.setColor(1, 1, 1)
+            love.graphics.print("COLLISION BOUNDS ON (F3)", MOBILE_WIDTH - 180, 50)
         end
     end
 
@@ -620,11 +669,33 @@ function love.draw()
         end
         love.graphics.setColor(1, 1, 1)
         love.graphics.print("Pause while dragging", 35, 170)
+        
+        -- Disable particles option (debug)
+        if debugMode then
+            love.graphics.setColor(0.3, 0.3, 0.4)
+            love.graphics.rectangle("fill", 10, 210, 20, 20)
+            if disableParticles then
+                love.graphics.setColor(0, 1, 0)
+                love.graphics.rectangle("fill", 13, 213, 14, 14)
+            end
+            love.graphics.setColor(1, 1, 1)
+            love.graphics.print("Disable particle effects (F2)", 35, 210)
+            
+            -- Show collision bounds option
+            love.graphics.setColor(0.3, 0.3, 0.4)
+            love.graphics.rectangle("fill", 10, 240, 20, 20)
+            if showCollisionBounds then
+                love.graphics.setColor(0, 1, 0)
+                love.graphics.rectangle("fill", 13, 243, 14, 14)
+            end
+            love.graphics.setColor(1, 1, 1)
+            love.graphics.print("Show collision bounds (F3)", 35, 240)
+        end
 
         -- Instructions
         love.graphics.setColor(0.8, 0.8, 0.8)
-        love.graphics.print("Tap checkboxes to toggle options", 10, 210)
-        love.graphics.print("Press 'S' to close settings", 10, 230)
+        love.graphics.print("Tap checkboxes to toggle options", 10, 270)
+        love.graphics.print("Press 'S' to close settings", 10, 290)
     end
     love.graphics.setColor(1, 0.3, 0.3)
     love.graphics.print("Lava: " .. math.floor(distanceFromLava) .. "px", 10, 70)
@@ -656,5 +727,34 @@ function love.draw()
     end
     transitionManager:draw()
 
+end
+
+-- Debug function to spawn test XP pellets
+function spawnTestXpPellets()
+    print("Spawning test XP pellets")
+    
+    -- Spawn 5 test pellets around the player
+    for i = 1, 5 do
+        local offsetX = love.math.random(-100, 100)
+        local offsetY = love.math.random(-100, 100)
+        
+        local pellet = xpManager:spawnXp(
+            player.x + player.width/2 + offsetX,
+            player.y + player.height/2 + offsetY,
+            love.math.random(1, 3)
+        )
+        
+        -- Make them immediately collectible
+        pellet.collectible = true
+        pellet.magnetizable = true
+        
+        -- Enable debug mode to see collision bounds
+        pellet.debug = true
+        
+        -- XP pellets are already added to the collision manager in their constructor
+        -- through BaseEntity, so we don't need to add them again
+        
+        print("Created test XP pellet at:", pellet.x, pellet.y)
+    end
 end
 

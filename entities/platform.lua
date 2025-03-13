@@ -1,15 +1,17 @@
--- platform.lua - Platform class for Love2D Platformer
+-- entities/platform.lua
+local BaseEntity = require("entities/baseEntity")
 
-local Platform = {}
+local Platform = setmetatable({}, {__index = BaseEntity})
 Platform.__index = Platform
 
 function Platform:new(x, y, width, height)
-    local self = setmetatable({}, Platform)
-    
-    self.x = x
-    self.y = y
-    self.width = width
-    self.height = height
+    local self = BaseEntity.new(self, x, y, width, height, {
+        type = "platform",
+        collisionLayer = "platform",
+        collidesWithLayers = {"player"},  -- Platforms collide with player
+        solid = true,
+        gravity = 0  -- Platforms don't fall
+    })
     
     return self
 end

@@ -25,8 +25,8 @@ function Slime:new(x, y)
     -- Movement properties
     self.speed = 40
     self.jumpStrength = 300
-    self.xVelocity = 0
-    self.yVelocity = 0
+    self.velocity.x = 0
+    self.velocity.y = 0
     
     -- Behavior
     self.state = "idle"  -- idle, jumping, stunned
