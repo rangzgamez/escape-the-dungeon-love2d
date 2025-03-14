@@ -97,9 +97,7 @@ function World:cleanupPlatforms(camera, platforms, springboards, removeCallback)
     -- Remove old platforms
     for i = #platforms, 1, -1 do
         if platforms[i].y > removalThreshold then
-            if removeCallback then
-                removeCallback(platforms[i])
-            end
+            CollisionManager.removeEntity(platforms[i])
             table.remove(platforms, i)
         end
     end
@@ -107,9 +105,7 @@ function World:cleanupPlatforms(camera, platforms, springboards, removeCallback)
     -- Remove old springboards
     for i = #springboards, 1, -1 do
         if springboards[i].y > removalThreshold then
-            if removeCallback then
-                removeCallback(springboards[i])
-            end
+            CollisionManager.removeEntity(springboards[i])
             table.remove(springboards, i)
         end
     end

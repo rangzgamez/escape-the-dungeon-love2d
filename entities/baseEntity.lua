@@ -13,7 +13,7 @@ function BaseEntity:new(x, y, width, height, options)
     self.y = y or 0
     self.width = width or 0
     self.height = height or 0
-    
+    self.gravity = 0
     -- Movement properties
     self.velocity = {x = 0, y = 0}
         

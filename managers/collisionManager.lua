@@ -105,11 +105,9 @@ end
 function CollisionManager.update(dt)
     local activeEntities = CollisionManager.getActiveEntities()
     local count = #activeEntities
-    
     -- Check each pair of entities exactly once
     for i = 1, count do
         local entityA = activeEntities[i]
-        
         for j = i + 1, count do
             local entityB = activeEntities[j]
             CollisionManager.processCollision(entityA, entityB, dt)

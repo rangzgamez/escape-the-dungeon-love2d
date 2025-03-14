@@ -12,7 +12,7 @@ local TransitionManager = require("managers/transitionManager")
 local InputManager = require('managers/inputManager')
 local XpManager = require("managers/xpManager")
 local LevelUpMenu = require("ui/levelUpMenu")
-
+--local KillFloor = require("entities/killFloor")
 -- Mobile resolution settings
 local MOBILE_WIDTH = 390  -- iPhone screen width
 local MOBILE_HEIGHT = 844 -- iPhone screen height
@@ -221,6 +221,7 @@ local function initializeWorld()
     -- Initialize camera
     camera = Camera:new(player)
     startHeight = player.y
+  --  killFloor = KillFloor:new(MOBILE_WIDTH)
 
     setupEventListeners()
 end
@@ -242,7 +243,6 @@ end
 local function updatePhysics(dt)
     -- Clean up platforms that are below the view
     world:cleanupPlatforms(camera, platforms, springboards)
-
     -- Game over if player falls below camera view
     if player.y > camera.y + love.graphics.getHeight() - 50 then
         gameOver = true
@@ -289,7 +289,10 @@ local function updatePhysics(dt)
     -- Update enemies
     enemyManager:update(dt, player, camera)
 
-
+ --   killFloor.y = camera.y + MOBILE_HEIGHT *.75 -- 50px below the visible area
+    
+    -- Update kill floor
+  --  killFloor:update(dt)
     -- Handle enemy collisions and get combo info
    -- enemyManager:handleCollisions(player, particleManager)
     
@@ -574,6 +577,7 @@ function love.draw()
     -- Draw the player
     player:draw()
     
+   -- killFloor:draw()
     -- Get bounds from collision manager
     local debugBounds = CollisionManager.getDebugBounds()
     

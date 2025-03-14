@@ -2,7 +2,7 @@
 local Events = require("lib/events")
 local Bat = require("entities/bat")
 local Slime = require("entities/slime")
-
+local CollisionManager = require('managers/collisionManager')
 local EnemyManager = {}
 EnemyManager.__index = EnemyManager
 
@@ -132,7 +132,7 @@ function EnemyManager:update(dt, player, camera)
     return enemy
 end
 
-function EnemyManager:cleanupEnemies(camera, removeCallback)
+function EnemyManager:cleanupEnemies(camera)
     local removalThreshold = camera.y + love.graphics.getHeight() * 1.5
     
     for i = #self.enemies, 1, -1 do
@@ -140,9 +140,7 @@ function EnemyManager:cleanupEnemies(camera, removeCallback)
         
         if enemy.y > removalThreshold then
             -- Call the removal callback if provided
-            if removeCallback then
-                removeCallback(enemy)
-            end
+            CollisionManager.removeEntity(enemy)
             
             -- Remove from the main enemies table
             table.remove(self.enemies, i)

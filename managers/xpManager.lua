@@ -1,6 +1,7 @@
 -- xpManager.lua - Manages XP pellets and player progression
 local Events = require("lib/events")
 local XpPellet = require("entities/xpPellet")
+local CollisionManager = require("managers/collisionManager")
 
 local XpManager = {}
 XpManager.__index = XpManager
@@ -91,14 +92,7 @@ function XpManager:update(dt, player, camera)
     end
     
     -- Clean up pellets that are too far below the camera
-    if camera then
-        self:cleanupPellets(camera, function(pellet)
-            -- Remove from collision manager if needed
-            if CollisionManager then
-                CollisionManager.removeEntity(pellet)
-            end
-        end)
-    end
+    self:cleanupPellets(camera)
 end
 
 -- Apply magnetic attraction to pellets (separated from collection logic)
@@ -141,16 +135,14 @@ function XpManager:applyMagneticAttraction(dt, player)
     end
 end
 
-function XpManager:cleanupPellets(camera, removeCallback)
+function XpManager:cleanupPellets(camera)
     local removalThreshold = camera.y + love.graphics.getHeight() * 1.5
     
     for i = #self.pellets, 1, -1 do
         local pellet = self.pellets[i]
         if pellet.y > removalThreshold then
             -- Call the removal callback so CollisionManager can remove it
-            if removeCallback then 
-                removeCallback(pellet)
-            end
+            CollisionManager.removeEntity(pellet)
             table.remove(self.pellets, i)
         end
     end
