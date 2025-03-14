@@ -3,10 +3,9 @@
 local World = {}
 World.__index = World
 
-local Platform = require("entities/platform")
-local Springboard = require("entities/springboard")
-local PowerUpManager = require("managers/powerUpManager")
 local CollisionManager = require("managers/collisionManager")
+local PowerUpManager = require("managers/powerUpManager")
+local EntityFactoryECS = require("entities/entityFactoryECS")
 
 function World:new()
     local self = setmetatable({}, World)
@@ -24,6 +23,12 @@ function World:new()
     self.springboardChance = 0.3 -- 30% chance of a springboard on a platform
     self.generationDistance = 1000 -- Generate platforms this far ahead of camera
     self.powerUpManager = PowerUpManager:new()
+    
+    -- Create entity factory if ECS world is available
+    if _G.ecsWorld then
+        self.entityFactory = EntityFactoryECS.new(_G.ecsWorld)
+    end
+    
     return self
 end
 
@@ -31,7 +36,17 @@ function World:generateInitialPlatforms(platforms, springboards)
     -- Add the starting platform (wider for easier start)
     local startX = love.graphics.getWidth() / 2 - love.graphics.getWidth() * 0.25
     local startY = love.graphics.getHeight() - 50
-    table.insert(platforms, Platform:new(startX, startY, love.graphics.getWidth() * 0.5, self.platformHeight))
+    
+    local platform
+    if self.entityFactory then
+        platform = self.entityFactory:createPlatform(startX, startY, love.graphics.getWidth() * 0.5, self.platformHeight)
+    else
+        -- Fallback to old system if ECS is not available
+        local Platform = require("entities/platform")
+        platform = Platform:new(startX, startY, love.graphics.getWidth() * 0.5, self.platformHeight)
+    end
+    
+    table.insert(platforms, platform)
     self.highestPlatformY = startY
     
     -- Generate initial set of platforms going upward
@@ -52,17 +67,41 @@ function World:generateNextPlatform(platforms, springboards)
     local platformX = love.math.random(0, self.screenWidth - platformWidth)
     
     -- Create new platform
-    local platform = Platform:new(platformX, platformY, platformWidth, self.platformHeight)
+    local platform
+    local springboard = nil
+    
+    if self.entityFactory then
+        -- Use ECS entities
+        platform = self.entityFactory:createPlatform(platformX, platformY, platformWidth, self.platformHeight)
+        
+        -- Randomly add a springboard to the platform
+        if love.math.random() < self.springboardChance then
+            local springX = platformX + platformWidth/2 - 25  -- Center on platform
+            springboard = self.entityFactory:createSpringboard(springX, platformY - 20, 50, 20)
+        end
+    else
+        -- Fallback to old system
+        local Platform = require("entities/platform")
+        local Springboard = require("entities/springboard")
+        
+        platform = Platform:new(platformX, platformY, platformWidth, self.platformHeight)
+        
+        -- Randomly add a springboard to the platform
+        if love.math.random() < self.springboardChance then
+            local springX = platformX + platformWidth/2 - 25  -- Center on platform
+            springboard = Springboard:new(springX, platformY - 20, 50, 20)
+        end
+    end
+    
     table.insert(platforms, platform)
     self.highestPlatformY = platformY
-    self.powerUpManager:tryPlatformSpawn(platform)
-    local springboard = nil
-    -- Randomly add a springboard to the platform
-    if love.math.random() < self.springboardChance then
-        local springX = platformX + platformWidth/2 - 25  -- Center on platform
-        springboard = Springboard:new(springX, platformY - 20, 50, 20)
+    
+    if springboard then
         table.insert(springboards, springboard)
     end
+    
+    self.powerUpManager:tryPlatformSpawn(platform)
+    
     return platform, springboard
 end
 
@@ -100,6 +139,12 @@ function World:cleanupPlatforms(camera, platforms, springboards, removeCallback)
             if removeCallback then
                 removeCallback(platforms[i])
             end
+            
+            -- Deactivate ECS entity if it exists
+            if platforms[i].ecsEntity then
+                platforms[i]:destroy()
+            end
+            
             table.remove(platforms, i)
         end
     end
@@ -110,8 +155,27 @@ function World:cleanupPlatforms(camera, platforms, springboards, removeCallback)
             if removeCallback then
                 removeCallback(springboards[i])
             end
+            
+            -- Deactivate ECS entity if it exists
+            if springboards[i].ecsEntity then
+                springboards[i]:destroy()
+            end
+            
             table.remove(springboards, i)
         end
+    end
+end
+
+-- Update the world
+function World:update(dt)
+    -- Update power-up manager
+    if self.powerUpManager then
+        self.powerUpManager:update(dt)
+    end
+    
+    -- If using ECS, update any world-specific ECS systems
+    if self.entityFactory and self.entityFactory.ecsWorld then
+        -- Any world-specific ECS updates can go here
     end
 end
 

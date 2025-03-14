@@ -1,10 +1,68 @@
 -- managers/collisionManager.lua
+-- DEPRECATED: This module is deprecated and will be removed in a future version.
+-- Use the ECS CollisionSystem instead.
+
 local CollisionManager = {}
 
+-- Keep track of entities for backward compatibility
 local entities = {}
+
+-- Reference to the ECS world and collision system
+local ecsWorld = nil
+local collisionSystem = nil
+
+-- Set the ECS world reference
+function CollisionManager.setECSWorld(world)
+    ecsWorld = world
+    if world then
+        collisionSystem = world.systemManager:getSystem("CollisionSystem")
+    end
+end
+
 -- Add an entity to the collision system
 function CollisionManager.addEntity(entity)
     table.insert(entities, entity)
+    
+    -- If the entity has already been converted to ECS, no need to do anything else
+    if entity.ecsEntity then
+        return
+    end
+    
+    -- If we have an ECS world, convert the entity to ECS
+    if ecsWorld and entity.getBounds then
+        -- Create or get ECS entity
+        local ecsEntity = ecsWorld:createEntity()
+        
+        -- Add transform component
+        local bounds = entity:getBounds()
+        ecsEntity:addComponent("transform", {
+            x = bounds.x,
+            y = bounds.y,
+            width = bounds.width,
+            height = bounds.height
+        })
+        
+        -- Add collider component
+        ecsEntity:addComponent("collider", {
+            offsetX = 0,
+            offsetY = 0,
+            width = bounds.width,
+            height = bounds.height,
+            layer = entity.collisionLayer or "default",
+            collidesWithLayers = entity.collidesWithLayers or {"default"}
+        })
+        
+        -- Add type component
+        ecsEntity:addComponent("type", {
+            name = entity.type or "entity"
+        })
+        
+        -- Store reference to ECS entity
+        entity.ecsEntity = ecsEntity
+        
+        -- Store reference to original entity
+        ecsEntity.originalEntity = entity
+    end
 end
 
 -- Remove an entity from the collision system
@@ -15,11 +73,25 @@ function CollisionManager.removeEntity(entity)
             break
         end
     end
+    
+    -- If the entity has an ECS entity, remove it from the ECS world
+    if entity.ecsEntity and ecsWorld then
+        ecsWorld:returnToPool(entity.ecsEntity)
+        entity.ecsEntity = nil
+    end
 end
 
 -- Clear all entities
 function CollisionManager.clear()
     entities = {}
+    
+    -- If we have an ECS world, clear it too
+    if ecsWorld then
+        -- The ECS world doesn't have a clear method, but we can reset the spatial grid
+        if collisionSystem then
+            collisionSystem.spatialGrid:clear()
+        end
+    end
 end
 
 -- Get all active entities
@@ -103,6 +175,31 @@ end
 
 -- Main update function
 function CollisionManager.update(dt)
+    -- If we have an ECS world, update entity positions in the ECS world
+    if ecsWorld then
+        for _, entity in ipairs(entities) do
+            if entity.active and entity.ecsEntity and entity.getBounds then
+                local bounds = entity:getBounds()
+                local transform = entity.ecsEntity:getComponent("transform")
+                if transform then
+                    transform.x = bounds.x
+                    transform.y = bounds.y
+                    transform.width = bounds.width
+                    transform.height = bounds.height
+                    
+                    -- Update entity in spatial grid
+                    ecsWorld:updateEntityPosition(entity.ecsEntity)
+                end
+            end
+        end
+        
+        -- Let the ECS world handle collisions
+        -- The ECS collision system will be updated as part of the ECS world update
+        -- which is called from the XpManager
+        return
+    end
+    
+    -- Legacy collision detection (only used if ECS world is not available)
     local activeEntities = CollisionManager.getActiveEntities()
     local count = #activeEntities
     

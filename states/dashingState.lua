@@ -6,7 +6,8 @@ local DashingState = setmetatable({}, BaseState)
 DashingState.__index = DashingState
 
 function DashingState:new(player)
-    local self = BaseState.new(self, player)
+    local self = BaseState.new(player)
+    setmetatable(self, DashingState)
     -- Dash specific state values
     self.afterImageTimer = nil
     self.dashTimeLeft = nil
@@ -18,7 +19,31 @@ end
 function DashingState:enter(prevState, data)
     -- Call parent method to fire state change event
     BaseState.enter(self, prevState)
-    self.player.onGround = false
+    
+    if self.player.ecsEntity then
+        -- ECS implementation
+        local movementComponent = self.player.ecsEntity:getComponent("movement")
+        movementComponent.isGrounded = false
+        
+        -- Set up dash parameters
+        if data then
+            -- Use provided dash data
+            self.dashDirection = data.direction
+            self.dashPower = data.power or 1.0
+            
+            -- Make sure dashDirection is set in the movement component
+            movementComponent.dashDirection = {
+                x = self.dashDirection.x,
+                y = self.dashDirection.y
+            }
+            
+            -- Calculate dash duration based on power
+            self.dashTimeLeft = movementComponent.minDashDuration + self.dashPower * (movementComponent.maxDashDuration - movementComponent.minDashDuration)
+        end
+    else
+        -- Legacy implementation
+        self.player.onGround = false
+    end
     
     -- Initialize afterImageTimer when entering dashing state
     self.afterImageTimer = 0.02
@@ -26,22 +51,33 @@ function DashingState:enter(prevState, data)
     -- Clear after image positions
     self.player.afterImagePositions = {}
     
-    -- Set up dash parameters
-    self.dashDirection = data.direction
-    self.dashPower = data.power
-    self.dashTimeLeft = self.player.minDashDuration + data.power * (self.player.maxDashDuration - self.player.minDashDuration)
+    -- Check if we're coming from grounded state
+    local fromGround = prevState and prevState:getName() == "grounded"
     
-    -- Log the dash parameters at start
-    -- Physics.logDashParams("Dash Start", self.player.x, self.player.y, 
-    --                     self.dashDirection, self.player.dashSpeed, self.dashPower, self.dashTimeLeft)
+    -- Set up dash parameters
+    if data then
+        -- Use provided dash data
+        self.dashDirection = data.direction
+        self.dashPower = data.power or 1.0
+        
+        -- Calculate dash duration based on power
+        if self.player.ecsEntity then
+            local movementComponent = self.player.ecsEntity:getComponent("movement")
+            self.dashTimeLeft = movementComponent.minDashDuration + self.dashPower * (movementComponent.maxDashDuration - movementComponent.minDashDuration)
+        else
+            -- Legacy player
+            self.dashTimeLeft = self.player.minDashDuration + self.dashPower * (self.player.maxDashDuration - self.player.minDashDuration)
+        end
+    end
     
     -- Fire event for visual effects
     self.events.fire("playerDashStarted", {
         power = self.dashPower,
         direction = self.dashDirection,
-        fromGround = prevState and prevState:getName() == "Grounded"
+        fromGround = fromGround
     })
 end
+
 function DashingState:update(dt)
     -- Update afterimage timer
     if not self.afterImageTimer or self.afterImageTimer <= 0 then
@@ -55,32 +91,64 @@ function DashingState:update(dt)
         self.afterImageTimer = self.afterImageTimer - dt
     end
     
-    -- Use the shared Physics module to move the player exactly as calculated in the trajectory
-    local centerX, centerY = Physics.applyDashMovement(
-        self.player,       -- player object 
-        self.dashDirection, -- dash direction
-        self.player.dashSpeed, -- dash speed
-        self.dashPower,    -- dash power
-        dt                 -- delta time
-    )
-    
-    -- Update player position from center to top-left
-    self.player.x = centerX - self.player.width/2
-    self.player.y = centerY - self.player.height/2
-    
-    -- Update dash timer
-    self.dashTimeLeft = self.dashTimeLeft - dt
-    
-    -- End dash when timer runs out
-    if self.dashTimeLeft <= 0 then
-        -- Set velocities for transition to falling
-        self.player.velocity.x = self.dashDirection.x * self.player.dashSpeed * 0.2 * self.dashPower
-        self.player.velocity.y = 0
+    if self.player.ecsEntity then
+        -- ECS implementation
+        local movementComponent = self.player.ecsEntity:getComponent("movement")
         
-        -- Change to falling state
-        self.player.stateMachine:change("Falling")
+        -- Update dash timer
+        self.dashTimeLeft = self.dashTimeLeft - dt
+        
+        -- Apply dash movement directly
+        if movementComponent.dashDirection then
+            -- Apply dash velocity continuously during the dash
+            movementComponent.velocityX = movementComponent.dashDirection.x * movementComponent.dashSpeed * self.dashPower
+            movementComponent.velocityY = movementComponent.dashDirection.y * movementComponent.dashSpeed * self.dashPower
+        end
+        
+        -- End dash and transition to falling state
+        if self.dashTimeLeft <= 0 then
+            -- Set velocities for transition to falling
+            if movementComponent.dashDirection then
+                movementComponent.velocityX = movementComponent.dashDirection.x * movementComponent.dashSpeed * 0.2 * self.dashPower
+                movementComponent.velocityY = 0
+            end
+            
+            -- Reset dash state
+            movementComponent.isDashing = false
+            
+            -- Transition to falling state
+            self.player.stateMachine:change("falling")
+        end
+    else
+        -- Legacy implementation
+        -- Use the shared Physics module to move the player exactly as calculated in the trajectory
+        local centerX, centerY = Physics.applyDashMovement(
+            self.player,       -- player object 
+            self.dashDirection, -- dash direction
+            self.player.dashSpeed, -- dash speed
+            self.dashPower,    -- dash power
+            dt                 -- delta time
+        )
+        
+        -- Update player position from center to top-left
+        self.player.x = centerX - self.player.width/2
+        self.player.y = centerY - self.player.height/2
+        
+        -- Update dash timer
+        self.dashTimeLeft = self.dashTimeLeft - dt
+        
+        -- End dash and transition to falling state
+        if self.dashTimeLeft <= 0 then
+            -- Set velocities for transition to falling
+            self.player.velocity.x = self.dashDirection.x * self.player.dashSpeed * 0.2 * self.dashPower
+            self.player.velocity.y = 0
+            
+            -- Transition to falling state
+            self.player.stateMachine:change("falling")
+        end
     end
 end
+
 function DashingState:checkHorizontalBounds(screenWidth)
     -- Left boundary
     if self.player.x < 0 then
@@ -112,10 +180,12 @@ function DashingState:enemyCollision(enemy)
         enemy = enemy
     })
     -- Refresh the player's dash
-    self.player:refreshJumps() -- CORRECTED METHOD NAME
+    self.player:refreshJumps()
     
     -- Increment combo counter
-    self.player:incrementCombo()
+    if self.player.incrementCombo then
+        self.player:incrementCombo()
+    end
 end
 
 function DashingState:draw()
@@ -145,14 +215,22 @@ function DashingState:draw()
         )
     end
 end
+
 function DashingState:onDragEnd(data)
-    if self.player:canJump() then
-        self.player:deductJump()
-        self.player.stateMachine:change("Dashing", data)
+    if self.player.ecsEntity then
+        -- ECS implementation
+        self.player:dash(data.direction)
+    else
+        -- Legacy implementation
+        if self.player:canJump() then
+            self.player:deductJump()
+            self.player.stateMachine:change("Dashing", data)
+        end
     end
 end
+
 function DashingState:getName()
-    return "Dashing"
+    return "dashing"
 end
 
 return DashingState

@@ -25,6 +25,9 @@ function PowerUpManager:new()
         SHIELD = 2         -- Rare
     }
     
+    -- ECS world reference (will be set later)
+    self.ecsWorld = nil
+    
     -- Register event handlers
     Events.on("playerHealthChanged", function(data)
         -- Adjust health power-up chance based on player health
@@ -38,6 +41,11 @@ function PowerUpManager:new()
     end)
     
     return self
+end
+
+-- Set the ECS world reference
+function PowerUpManager:setECSWorld(world)
+    self.ecsWorld = world
 end
 
 -- Update all power-ups
@@ -58,12 +66,14 @@ function PowerUpManager:update(dt, player, camera)
     if self.randomSpawnTimer <= 0 then
         self.randomSpawnTimer = self.randomSpawnInterval
         
-        -- Try to spawn a random power-up
-        self:tryRandomSpawn(camera)
+        -- Try to spawn a random power-up if camera is available
+        if camera then
+            self:tryRandomSpawn(camera)
+        end
     end
     
     -- Add magnet effect if player has the magnet power-up
-    if player.magnetActive then
+    if player and (player.magnetActive or (player.ecsEntity and player.ecsEntity:hasComponent("player") and player.ecsEntity:getComponent("player").magnetActive)) then
         self:updateMagnetEffect(dt, player)
     end
 end
@@ -77,15 +87,24 @@ end
 
 -- Spawn a power-up at the specified position
 function PowerUpManager:spawnPowerUp(x, y, specificType)
-    -- Create a new power-up (with specified type or random)
-    local powerUp = PowerUp:new(x, y, specificType or self:getRandomPowerUpType())
+    local powerUp
+    
+    -- Use ECS if available
+    if self.ecsWorld then
+        local entityFactory = require("entities/entityFactoryECS").new(self.ecsWorld)
+        powerUp = entityFactory:createPowerUp(x, y, specificType or self:getRandomPowerUpType())
+    else
+        -- Legacy power-up creation
+        powerUp = PowerUp:new(x, y, specificType or self:getRandomPowerUpType())
+    end
+    
     table.insert(self.powerUps, powerUp)
     
     -- Fire event for power-up spawned
     Events.fire("powerUpSpawned", {
         x = x,
         y = y,
-        type = powerUp.type
+        type = powerUp.powerupType or powerUp.type
     })
     
     return powerUp
@@ -105,10 +124,15 @@ function PowerUpManager:tryPlatformSpawn(platform)
     return self:spawnPowerUp(x, y)
 end
 
--- Try to spawn a random power-up somewhere in the visible area
+-- Try to spawn a random power-up
 function PowerUpManager:tryRandomSpawn(camera)
-    -- 30% chance to actually spawn
-    if love.math.random() > 0.3 then
+    -- Skip if no camera is provided
+    if not camera then
+        return nil
+    end
+    
+    -- Random chance to spawn
+    if love.math.random() > 0.1 then
         return nil
     end
     
@@ -148,6 +172,18 @@ end
 
 -- Handle collisions between player and power-ups
 function PowerUpManager:handleCollisions(player)
+    -- If using ECS, collisions are handled by the collision system
+    if self.ecsWorld then
+        -- Just clean up inactive power-ups
+        for i = #self.powerUps, 1, -1 do
+            if not self.powerUps[i].active then
+                table.remove(self.powerUps, i)
+            end
+        end
+        return nil
+    end
+    
+    -- Legacy collision handling
     for i = #self.powerUps, 1, -1 do
         local powerUp = self.powerUps[i]
         
@@ -180,7 +216,13 @@ function PowerUpManager:cleanupPowerUps(camera)
     local removalThreshold = camera.y + love.graphics.getHeight() * 1.5
     
     for i = #self.powerUps, 1, -1 do
-        if self.powerUps[i].y > removalThreshold then
+        local powerUp = self.powerUps[i]
+        if powerUp.y > removalThreshold then
+            -- If using ECS, deactivate the ECS entity
+            if powerUp.ecsEntity then
+                powerUp.ecsEntity:deactivate()
+            end
+            
             table.remove(self.powerUps, i)
         end
     end
@@ -188,17 +230,48 @@ end
 
 -- Update magnet effect to attract power-ups to the player
 function PowerUpManager:updateMagnetEffect(dt, player)
+    -- If player is nil, don't apply magnet effect
+    if not player then return end
+    
     local magnetRadius = 150
     local magnetStrength = 200
     
     -- Calculate center of player
-    local playerCenterX = player.x + player.width/2
-    local playerCenterY = player.y + player.height/2
+    local playerCenterX, playerCenterY
+    
+    -- Get player position based on whether it's an ECS entity
+    if player.ecsEntity then
+        local transform = player.ecsEntity:getComponent("transform")
+        if transform and transform.position then
+            playerCenterX = transform.position.x + transform.size.width/2
+            playerCenterY = transform.position.y + transform.size.height/2
+        else
+            playerCenterX = player.x + player.width/2
+            playerCenterY = player.y + player.height/2
+        end
+    else
+        playerCenterX = player.x + player.width/2
+        playerCenterY = player.y + player.height/2
+    end
     
     for _, powerUp in ipairs(self.powerUps) do
         -- Calculate power-up center
-        local powerUpCenterX = powerUp.x + powerUp.width/2
-        local powerUpCenterY = powerUp.y + powerUp.height/2
+        local powerUpCenterX, powerUpCenterY
+        
+        -- Get power-up position based on whether it's an ECS entity
+        if powerUp.ecsEntity then
+            local transform = powerUp.ecsEntity:getComponent("transform")
+            if transform and transform.position then
+                powerUpCenterX = transform.position.x + transform.size.width/2
+                powerUpCenterY = transform.position.y + transform.size.height/2
+            else
+                powerUpCenterX = powerUp.x + powerUp.width/2
+                powerUpCenterY = powerUp.y + powerUp.height/2
+            end
+        else
+            powerUpCenterX = powerUp.x + powerUp.width/2
+            powerUpCenterY = powerUp.y + powerUp.height/2
+        end
         
         -- Calculate distance to player
         local dx = playerCenterX - powerUpCenterX
@@ -216,8 +289,19 @@ function PowerUpManager:updateMagnetEffect(dt, player)
             local pullStrength = magnetStrength * pullFactor * dt
             
             -- Move power-up toward player
-            powerUp.x = powerUp.x + nx * pullStrength
-            powerUp.y = powerUp.y + ny * pullStrength
+            if powerUp.ecsEntity then
+                local physics = powerUp.ecsEntity:getComponent("physics")
+                if physics and physics.velocity then
+                    physics.velocity.x = physics.velocity.x + nx * pullStrength * 10
+                    physics.velocity.y = physics.velocity.y + ny * pullStrength * 10
+                else
+                    powerUp.x = powerUp.x + nx * pullStrength
+                    powerUp.y = powerUp.y + ny * pullStrength
+                end
+            else
+                powerUp.x = powerUp.x + nx * pullStrength
+                powerUp.y = powerUp.y + ny * pullStrength
+            end
         end
     end
 end

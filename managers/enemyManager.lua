@@ -1,7 +1,6 @@
 -- enemyManager.lua - Manages enemies for Love2D Vertical Jumper
 local Events = require("lib/events")
-local Bat = require("entities/bat")
-local Slime = require("entities/slime")
+local EntityFactoryECS = require("entities/entityFactoryECS")
 
 local EnemyManager = {}
 EnemyManager.__index = EnemyManager
@@ -21,6 +20,11 @@ function EnemyManager:new()
     self.generationDistance = 1000
     -- Store platforms reference (will be set in update)
     self.platforms = nil
+    
+    -- Create entity factory if ECS world is available
+    if _G.ecsWorld then
+        self.entityFactory = EntityFactoryECS.new(_G.ecsWorld)
+    end
 
     return self
 end
@@ -42,20 +46,46 @@ function EnemyManager:generateEnemy()
     
     -- Create an enemy based on random chance
     local enemy = nil
-    if love.math.random() < self.batChance then
-        enemy = Bat:new(enemyX, enemyY)
-    elseif self.platforms and #self.platforms > 0 and love.math.random() < self.slimeChance then
-        -- Find a suitable platform for the slime
-        local platformIndex = self:findPlatformNearY(enemyY)
+    
+    if self.entityFactory then
+        -- Use ECS entities
+        if love.math.random() < self.batChance then
+            enemy = self.entityFactory:createBat(enemyX, enemyY)
+        elseif self.platforms and #self.platforms > 0 and love.math.random() < self.slimeChance then
+            -- Find a suitable platform for the slime
+            local platformIndex = self:findPlatformNearY(enemyY)
+            
+            if platformIndex then
+                local platform = self.platforms[platformIndex]
+                
+                -- Place slime on the platform
+                local slimeX = platform.x + love.math.random(10, platform.width - 40) -- Keep away from edges
+                local slimeY = platform.y - 20 -- Height of slime
+                
+                -- Create slime using ECS
+                enemy = self.entityFactory:createEnemy(slimeX, slimeY, "basic")
+            end
+        end
+    else
+        -- Fallback to old system
+        local Bat = require("entities/bat")
+        local Slime = require("entities/slime")
         
-        if platformIndex then
-            local platform = self.platforms[platformIndex]
+        if love.math.random() < self.batChance then
+            enemy = Bat:new(enemyX, enemyY)
+        elseif self.platforms and #self.platforms > 0 and love.math.random() < self.slimeChance then
+            -- Find a suitable platform for the slime
+            local platformIndex = self:findPlatformNearY(enemyY)
             
-            -- Place slime on the platform
-            local slimeX = platform.x + love.math.random(10, platform.width - 40) -- Keep away from edges
-            local slimeY = platform.y - 20 -- Height of slime
-            
-            enemy = Slime:new(slimeX, slimeY, platform)
+            if platformIndex then
+                local platform = self.platforms[platformIndex]
+                
+                -- Place slime on the platform
+                local slimeX = platform.x + love.math.random(10, platform.width - 40) -- Keep away from edges
+                local slimeY = platform.y - 20 -- Height of slime
+                
+                enemy = Slime:new(slimeX, slimeY, platform)
+            end
         end
     end
     
@@ -119,9 +149,13 @@ function EnemyManager:update(dt, player, camera)
         end
     end
     local enemy = nil;
-    -- Generate new enemies if needed
-    while self.minEnemyY > camera.y - self.generationDistance do
-        enemy = self:generateEnemy()
+    
+    -- Generate new enemies if camera is provided
+    if camera then
+        -- Generate new enemies if needed
+        while self.minEnemyY > camera.y - self.generationDistance do
+            enemy = self:generateEnemy()
+        end
     end
     
     -- Update all enemies
@@ -142,6 +176,11 @@ function EnemyManager:cleanupEnemies(camera, removeCallback)
             -- Call the removal callback if provided
             if removeCallback then
                 removeCallback(enemy)
+            end
+            
+            -- Deactivate ECS entity if it exists
+            if enemy.ecsEntity then
+                enemy:destroy()
             end
             
             -- Remove from the main enemies table
@@ -192,13 +231,24 @@ function EnemyManager:draw()
     -- Debug: Draw detection radius for enemies
     if false then -- Set to true to enable debug visualization
         love.graphics.setColor(1, 0, 0, 0.2)
-        for _, bat in ipairs(self.bats) do
-            love.graphics.circle("line", bat.x + bat.radius, bat.y + bat.radius, bat.detectionRadius)
-        end
-        for _, slime in ipairs(self.slimes) do
-            love.graphics.circle("line", slime.x + slime.width/2, slime.y + slime.height/2, slime.detectionRadius)
+        for _, enemy in ipairs(self.enemies) do
+            if enemy.detectionRadius then
+                love.graphics.circle("line", enemy.x + enemy.width/2, enemy.y + enemy.height/2, enemy.detectionRadius)
+            end
         end
     end
+end
+
+-- Reset the enemy manager
+function EnemyManager:reset()
+    -- Clear all enemies
+    self.enemies = {}
+    
+    -- Reset enemy generation parameters
+    self.minEnemyY = 0
+    self.lastEnemyY = love.graphics.getHeight()
+    
+    print("Enemy manager reset")
 end
 
 return EnemyManager

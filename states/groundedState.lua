@@ -5,7 +5,8 @@ local GroundedState = setmetatable({}, BaseState)
 GroundedState.__index = GroundedState
 
 function GroundedState:new(player)
-    local self = BaseState.new(self, player)
+    local self = BaseState.new(player)
+    setmetatable(self, GroundedState)
     return self
 end
 
@@ -13,44 +14,81 @@ end
 function GroundedState:enter(prevState)
     -- Call parent method to fire state change event
     BaseState.enter(self, prevState)
-    -- Reset velocity and set onGround
-    self.player.velocity.x = 0
-    self.player.velocity.y = 0
-    self.player.onGround = true
-    -- Reset midair jumps when landing
-    self.player:refreshJumps()
     
-    -- Fire landed event if coming from falling or dashing
-    if prevState and (prevState:getName() == "Falling" or prevState:getName() == "Dashing") then
-        self.events.fire("playerLanded", {
-            x = self.player.x,
-            y = self.player.y
+    if self.player and self.player.ecsEntity then
+        -- ECS implementation
+        local movementComponent = self.player.ecsEntity:getComponent("movement")
+        movementComponent.velocityX = 0
+        movementComponent.velocityY = 0
+        movementComponent.isGrounded = true
+        
+        -- Reset midair jumps when landing
+        self.player:refreshJumps()
+    else
+        -- Legacy implementation
+        -- Reset velocity and set onGround
+        self.player.velocity.x = 0
+        self.player.velocity.y = 0
+        self.player.onGround = true
+        -- Reset midair jumps when landing
+        self.player:refreshJumps()
+    end
+    
+    -- Check if we're landing from a fall or dash
+    if prevState and (prevState:getName() == "falling" or prevState:getName() == "dashing") then
+        -- Fire landing event
+        self.events.fire("playerLand", {
+            x = self.player.x + self.player.width/2,
+            y = self.player.y + self.player.height
         })
     end
 end
 
 function GroundedState:onDragEnd(data)
-    self.player.stateMachine:change("Dashing", data)
+    if data.isSignificantDrag then
+        -- Dash in the direction opposite to the drag
+        if self.player.ecsEntity then
+            -- ECS implementation
+            self.player:dash(data.direction)
+        else
+            -- Legacy implementation
+            self.player.stateMachine:change("dashing", data)
+        end
+    end
 end
-function GroundedState:update(dt)
-    -- Handle horizontal movement (keyboard controls)
-    self.player.velocity.x = 0
-    self.player.velocity.y = 0
 
-    -- Apply velocities to position
-    self.player.x = self.player.x + self.player.velocity.x * dt
+function GroundedState:update(dt)
+    if self.player.ecsEntity then
+        local movementComponent = self.player.ecsEntity:getComponent("movement")
         
-    -- Reset combo if on ground with active combo
-    if self.player.comboCount > 0 then
-        self.player:resetCombo()
+        -- Check if we're falling
+        if not movementComponent.isGrounded then
+            self.player.stateMachine:change("falling")
+        end
+    else
+        -- Legacy implementation
+        -- Check if we're falling
+        if not self.player.onGround then
+            self.player.stateMachine:change("falling")
+        end
     end
 end
 
 function GroundedState:onLeftGround()
     -- Change to falling state
-    if self.player.velocity.y > 5 then
-        -- Change to falling state
-        self.player.stateMachine:change("Falling")
+    if self.player.ecsEntity then
+        -- ECS implementation
+        local movementComponent = self.player.ecsEntity:getComponent("movement")
+        if movementComponent.velocityY > 5 then
+            -- Change to falling state
+            self.player.stateMachine:change("falling")
+        end
+    else
+        -- Legacy implementation
+        if self.player.velocity.y > 5 then
+            -- Change to falling state
+            self.player.stateMachine:change("falling")
+        end
     end
 end
 
@@ -58,13 +96,23 @@ function GroundedState:checkHorizontalBounds(screenWidth)
     -- Left boundary
     if self.player.x < 0 then
         self.player.x = 0
-        self.player.velocity.x = 0
+        if self.player.ecsEntity then
+            local movementComponent = self.player.ecsEntity:getComponent("movement")
+            movementComponent.velocityX = 0
+        else
+            self.player.velocity.x = 0
+        end
     end
     
     -- Right boundary
     if self.player.x + self.player.width > screenWidth then
         self.player.x = screenWidth - self.player.width
-        self.player.velocity.x = 0
+        if self.player.ecsEntity then
+            local movementComponent = self.player.ecsEntity:getComponent("movement")
+            movementComponent.velocityX = 0
+        else
+            self.player.velocity.x = 0
+        end
     end
 end
 
@@ -72,7 +120,9 @@ function GroundedState:enemyCollision(enemy)
     -- Enemy hits player - player takes damage
     self.player:takeDamage()
     -- Reset combo when hit
-    self.player:resetCombo()
+    if self.player.resetCombo then
+        self.player:resetCombo()
+    end
 end
 
 function GroundedState:draw()
@@ -82,7 +132,7 @@ function GroundedState:draw()
 end
 
 function GroundedState:getName()
-    return "Grounded"
+    return "grounded"
 end
 
 return GroundedState

@@ -48,6 +48,29 @@ function Camera:new(player)
 end
 
 function Camera:update(dt, player, gameSpeed)
+    -- If player is nil, just update time and return
+    if not player then
+        -- Update time for difficulty scaling
+        self.timeSinceStart = self.timeSinceStart + dt
+        
+        -- Calculate current scroll speed
+        self.currentScrollSpeed = math.min(
+            self.initialScrollSpeed + self.timeSinceStart * self.scrollSpeedIncreaseRate,
+            self.maxScrollSpeed
+        )
+        
+        -- Apply auto-scrolling directly
+        self.y = self.y - self.currentScrollSpeed * dt
+        
+        -- Update lava position to follow camera
+        self.lavaY = self.y + love.graphics.getHeight()
+        
+        -- Update camera shake
+        self:updateShake(dt)
+        
+        return 0 -- Return 0 as distance from lava
+    end
+    
     -- Update time for difficulty scaling
     self.timeSinceStart = self.timeSinceStart + dt
     
@@ -97,7 +120,11 @@ function Camera:update(dt, player, gameSpeed)
     
     return distanceFromLava
 end
+
 function Camera:isPlayerCaughtByLava(player)
+    if not player then
+        return false
+    end
     return (player.y + player.height) >= self.lavaY
 end
 
@@ -222,6 +249,43 @@ function Camera:getPosition()
         x = self.x + self.shakeOffsetX,
         y = self.y + self.shakeOffsetY
     }
+end
+
+-- Apply camera transformation
+function Camera:apply()
+    love.graphics.push()
+    love.graphics.translate(-self.shakeOffsetX, -self.y + self.shakeOffsetY)
+end
+
+-- Reset camera transformation
+function Camera:clear()
+    love.graphics.pop()
+end
+
+-- Reset camera to initial state
+function Camera:reset(player)
+    if player then
+        self.y = player.y
+        self.highestY = player.y
+        self.lavaY = player.y + 300
+    else
+        -- Default reset if no player is provided
+        self.y = love.graphics.getHeight() - 200
+        self.highestY = self.y
+        self.lavaY = self.y + 300
+    end
+    
+    -- Reset other properties
+    self.x = 0
+    self.shakeAmount = 0
+    self.shakeDuration = 0
+    self.shakeOffsetX = 0
+    self.shakeOffsetY = 0
+    self.timeSinceStart = 0
+    self.currentScrollSpeed = self.initialScrollSpeed
+    self.autoScrollActive = true
+    
+    print("Camera reset")
 end
 
 return Camera

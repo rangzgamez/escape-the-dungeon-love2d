@@ -1,6 +1,6 @@
 -- main.lua - Entry point for Love2D Vertical Jumper
 
-local Player = require("entities/player")
+-- Import managers and utilities
 local ParticleManager = require("managers/particleManager")
 local CollisionManager = require("managers/collisionManager")
 local World = require("managers/world")
@@ -12,6 +12,22 @@ local TransitionManager = require("managers/transitionManager")
 local InputManager = require('managers/inputManager')
 local XpManager = require("managers/xpManager")
 local LevelUpMenu = require("ui/levelUpMenu")
+
+-- ECS System
+local ECS = require("lib/ecs/ecs")
+local Bridge = require("lib/ecs/bridge")
+local ECSEntity = require("entities/ecsEntity")
+
+-- ECS Entities
+local PlayerECS = require("entities/playerECS")
+local PlatformECS = require("entities/platformECS")
+local SpringboardECS = require("entities/springboardECS")
+local MovingPlatformECS = require("entities/movingPlatformECS")
+local BatECS = require("entities/batECS")
+local SlimeECS = require("entities/slimeECS")
+local XpPelletECS = require("entities/xpPelletECS")
+local PowerUpECS = require("entities/powerUpECS")
+local EntityFactoryECS = require("entities/entityFactoryECS")
 
 -- Mobile resolution settings
 local MOBILE_WIDTH = 390  -- iPhone screen width
@@ -38,6 +54,11 @@ local gameOver = false
 local gameOverReason = 'DIED'
 local distanceClimbed = 0
 local startHeight = 0
+local isPaused = false
+
+-- ECS world and factory
+local ecsWorld
+local entityFactory
 
 -- Mouse/touch tracking variables
 local isDragging = false
@@ -48,13 +69,15 @@ local slowDownWhileDragging = false  -- Option to slow time during drag
 local pauseWhileDragging = true  -- Option to pause game during drag
 local slowDownFactor = 0.3  -- Game runs at 30% speed when dragging
 
+-- Debug settings
+local showCollisionBounds = false
+local debugMode = false
+
 -- Debug variables
 local showDebugInfo = false
 local debugInfoTimer = 0
 local debugInfoInterval = 1 -- Update debug info every second
-local debugMode = true -- Enable debug features
 local disableParticles = true -- Debug option to disable particle effects
-local showCollisionBounds = true -- Debug option to show collision bounds
 
 -- Setup event handlers for player state changes
 local function setupEventListeners()
@@ -64,6 +87,7 @@ local function setupEventListeners()
     Events.on("dragStart", function(data)
         if pauseWhileDragging then
             timeManager:setTimeScale(0)
+            isPaused = true
         elseif slowDownWhileDragging then
             timeManager:setTimeScale(slowDownFactor)
         end
@@ -74,14 +98,20 @@ local function setupEventListeners()
     end)
     
     Events.on("dragEnd", function(data)
-        if pauseWhileDragging or slowDownWhileDragging then
+        if pauseWhileDragging then
+            timeManager:setTimeScale(1, true)
+            isPaused = false
+        elseif slowDownWhileDragging then
             timeManager:setTimeScale(1, true)
         end
         player:onDragEnd(data)
     end)
     
     Events.on("dragCancel", function()
-        if pauseWhileDragging or slowDownWhileDragging then
+        if pauseWhileDragging then
+            timeManager:setTimeScale(1, true)
+            isPaused = false
+        elseif slowDownWhileDragging then
             timeManager:setTimeScale(1, true)
         end
     end)
@@ -179,6 +209,43 @@ local function setupEventListeners()
     end
 end
 
+-- Initialize the ECS system
+function initializeECS()
+    -- Create the ECS world
+    ecsWorld = Bridge.createWorld()
+    
+    -- Set the ECS world for ECSEntity
+    ECSEntity.setECSWorld(ecsWorld)
+    
+    -- Create the entity factory
+    entityFactory = EntityFactoryECS.new(ecsWorld)
+    
+    -- Make ecsWorld globally accessible
+    _G.ecsWorld = ecsWorld
+    
+    -- Set up event handlers
+    Events.on("enemyKill", function(data)
+        -- Create XP drops using the ECS system
+        if xpManager then
+            xpManager:onEnemyKill(data)
+        end
+    end)
+    
+    Events.on("xpCollected", function(data)
+        -- Add XP to player
+        if player and player.addExperience then
+            player:addExperience(data.value)
+        end
+    end)
+    
+    -- Enable collision debug drawing for development
+    if debug and debug.collisionDebug then
+        Bridge.toggleCollisionDebug(ecsWorld)
+    end
+    
+    print("ECS system initialized")
+end
+
 local function initializeWorld()
     -- Reset game state
     gameOver = false
@@ -189,19 +256,21 @@ local function initializeWorld()
     -- Clear all event listeners
     Events.clearAll()
 
-    --clear collisions
+    -- Clear collisions
     CollisionManager.clear()
+    
     -- Initialize particle manager
     particleManager = ParticleManager:new()
 
     -- Initialize world generator
     world = World:new()
+    
     -- Generate initial platforms
     platforms = {}
     springboards = {}
-    world:generateInitialPlatforms(platforms, springboards)
-    -- Initialize player
-    player = Player:new()
+    
+    -- Initialize player using ECS
+    player = entityFactory:createPlayer(MOBILE_WIDTH / 2 - 16, MOBILE_HEIGHT - 200)
     
     -- Initialize Time Manager
     timeManager = TimeManager:new()
@@ -216,17 +285,63 @@ local function initializeWorld()
 
     -- Initialize enemy manager (with platforms reference)
     enemyManager = EnemyManager:new()
-    enemyManager:generateInitialEnemies(platforms) -- Pass platforms here
-
+    
     -- Initialize camera
     camera = Camera:new(player)
     startHeight = player.y
 
     setupEventListeners()
+    
+    -- Generate initial platforms using ECS entities
+    generateInitialPlatformsECS()
+end
+
+-- Generate initial platforms using ECS entities
+function generateInitialPlatformsECS()
+    -- Add the starting platform (wider for easier start)
+    local startX = MOBILE_WIDTH / 2 - MOBILE_WIDTH * 0.25
+    local startY = MOBILE_HEIGHT - 50
+    local startPlatform = entityFactory:createPlatform(startX, startY, MOBILE_WIDTH * 0.5, 20)
+    table.insert(platforms, startPlatform)
+    
+    -- Generate initial set of platforms going upward
+    local highestY = startY
+    for i = 1, 15 do
+        -- Generate random vertical gap
+        local verticalGap = love.math.random(80, 150)
+        local platformY = highestY - verticalGap
+        
+        -- Generate random platform width
+        local platformWidth = love.math.random(60, MOBILE_WIDTH * 0.5)
+        
+        -- Generate random X position within screen bounds
+        local platformX = love.math.random(0, MOBILE_WIDTH - platformWidth)
+        
+        -- Create new platform using ECS
+        local platform = entityFactory:createPlatform(platformX, platformY, platformWidth, 20)
+        table.insert(platforms, platform)
+        highestY = platformY
+        
+        -- Randomly add a springboard to the platform
+        if love.math.random() < 0.3 then
+            local springX = platformX + platformWidth/2 - 25  -- Center on platform
+            local springboard = entityFactory:createSpringboard(springX, platformY - 20, 50, 20)
+            table.insert(springboards, springboard)
+        end
+    end
 end
 
 -- Load resources and initialize the game
 function love.load()
+    -- Check for debug mode in command line arguments
+    for _, arg in ipairs(love.arg.parseGameArguments(arg)) do
+        if arg == "--debug" then
+            debugMode = true
+            showCollisionBounds = true
+            print("Debug mode enabled")
+        end
+    end
+
     -- Set the window dimensions to match mobile resolution
     love.window.setMode(MOBILE_WIDTH, MOBILE_HEIGHT)
 
@@ -236,7 +351,70 @@ function love.load()
     -- Set default background color
     love.graphics.setBackgroundColor(0.1, 0.1, 0.2)
 
-   initializeWorld()
+    -- Initialize the ECS system
+    initializeECS()
+
+    -- Initialize the game world
+    initializeWorld()
+    
+    -- Connect the XP manager to the ECS world
+    xpManager:setECSWorld(ecsWorld)
+    
+    -- Connect the CollisionManager to the ECS world
+    CollisionManager.setECSWorld(ecsWorld)
+    
+    -- Connect the ECSEntity class to the ECS world
+    ECSEntity.setECSWorld(ecsWorld)
+
+    -- Set up random seed
+    math.randomseed(os.time())
+    
+    -- Start the game
+    startGame()
+end
+
+-- Function to start or restart the game
+function startGame()
+    -- Reset game state
+    gameOver = false
+    score = 0
+    gameSpeed = 50
+    distanceClimbed = 0
+    
+    -- Initialize the world if it hasn't been initialized yet
+    if not world then
+        initializeWorld()
+    end
+    
+    -- Reset player position
+    if player then
+        player.x = love.graphics.getWidth() / 2 - player.width / 2
+        player.y = love.graphics.getHeight() - 200
+    end
+    
+    -- Reset camera
+    if camera then
+        camera:reset(player)
+        startHeight = player.y
+    end
+    
+    -- Generate initial platforms if needed
+    if #platforms == 0 then
+        generateInitialPlatformsECS()
+    end
+    
+    -- Reset enemy manager
+    if enemyManager then
+        enemyManager:reset()
+        enemyManager:generateInitialEnemies(platforms)
+    end
+    
+    -- Reset time manager
+    if timeManager then
+        timeManager:reset()
+    end
+    
+    print("Game started!")
 end
 
 local function updatePhysics(dt)
@@ -314,6 +492,7 @@ local function updatePhysics(dt)
         spring:update(dt)
     end
 end
+
 -- Update game state (dt is "delta time" - time since last frame)
 function love.update(dt)
     if gameOver then
@@ -323,64 +502,46 @@ function love.update(dt)
         return
     end
     
-    -- Apply time effects from time manager
-    dt = timeManager:update(dt)
+    -- Update the ECS world first
+    if ecsWorld then
+        ecsWorld:update(dt)
+    end
     
-    -- Store original dt for animations that should run regardless of pause
-    local realDt = dt
-
-    inputManager:update(dt, camera)
-
-    -- Handle player dragging regardless of pause state
-    if isDragging then
-        -- No need to call player:calculateTrajectory() here!
-        -- DraggingState:update will handle its own trajectory calculation
+    -- Update time manager
+    local scaledDt = timeManager:update(dt)
+    
+    -- Update transition manager
+    transitionManager:update(dt)
+    
+    -- Only update game if not paused or transitioning
+    if not transitionManager:isTransitioning() and not isPaused then
+        -- Update input manager
+        inputManager:update(dt)
         
-        if pauseWhileDragging then
-            -- Instead of completely skipping updates, just update minimal elements
-            -- Only allow UI and visual updates, but pause gameplay
-            
-            -- Update camera to ensure proper display
-            camera:update(0, player, 0)  -- Zero dt to prevent movement
-            
-            -- Update particle systems with zero dt to prevent animation
-            if not disableParticles then
-                particleManager:update(0)
-            end
-            
-            -- Special case: update combo text animations with the real dt
-            player:updateComboAnimations(realDt)
-            
-            return  -- Skip the rest of the game updates
-        elseif slowDownWhileDragging then
-            -- Apply slow-motion effect
-            dt = dt * slowDownFactor
+        -- Update player
+        if player and player.active then
+            player:update(dt)
         end
-    end
-    -- Cap dt to prevent tunneling through objects at low framerates
-    dt = math.min(dt, 0.016)
-
-    -- Check if we need to show level-up menu
-    if player.levelUpPending and not levelUpMenu:isVisible() then
-        -- Pause the game during level-up
-        timeManager:setTimeScale(0)
-        -- Show the level-up menu
-        levelUpMenu:show()
-    end
-
-    -- Update level-up menu if visible
-    if levelUpMenu:isVisible() then
-        levelUpMenu:update(dt)
-    end
-
-    -- Always update the player's XP popup text (it's just visual)
-    player:updateXpPopup(dt)
-    -- Update particle systems (if not disabled)
-    if not disableParticles then
+        
+        -- Update camera
+        camera:update(dt)
+        
+        -- Update enemy manager
+        enemyManager:update(dt)
+        
+        -- Update particle manager
         particleManager:update(dt)
-    end
-    if not levelUpMenu:isVisible() then
-        updatePhysics(dt)
+        
+        -- Update world
+        world:update(dt)
+        
+        -- Update XP manager
+        xpManager:update(dt)
+        
+        -- Update level up menu if active
+        if levelUpMenu and levelUpMenu.active then
+            levelUpMenu:update(dt)
+        end
     end
 end
 
@@ -427,6 +588,12 @@ function love.keypressed(key)
     elseif key == "f3" and debugMode then
         -- Debug: Toggle collision bounds
         showCollisionBounds = not showCollisionBounds
+        
+        -- Toggle collision debug in ECS system if available
+        if ecsWorld then
+            Bridge.toggleCollisionDebug(ecsWorld)
+        end
+        
         print("Collision bounds " .. (showCollisionBounds and "visible" or "hidden"))
     end
 
@@ -698,7 +865,7 @@ function love.draw()
         love.graphics.print("Press 'S' to close settings", 10, 290)
     end
     love.graphics.setColor(1, 0.3, 0.3)
-    love.graphics.print("Lava: " .. math.floor(distanceFromLava) .. "px", 10, 70)
+    love.graphics.print("Lava: " .. math.floor(distanceFromLava or 0) .. "px", 10, 70)
     
     if gameOver then
         love.graphics.setColor(1, 0, 0)
@@ -715,12 +882,27 @@ function love.draw()
     xpManager:draw()
     player:drawXpPopup()
 
+    -- Draw XP bar
     love.graphics.setColor(0.2, 0.2, 0.2)
     love.graphics.rectangle("fill", 10, 80, 100, 10)
+    
+    -- Get player XP data from ECS component
+    local xpRatio = 0
+    local playerLevel = 1
+    
+    if player and player.ecsEntity then
+        local playerComponent = player.ecsEntity:getComponent("player")
+        if playerComponent then
+            xpRatio = playerComponent.xp / (playerComponent.xpToNextLevel or 100)
+            playerLevel = playerComponent.level or 1
+        end
+    end
+    
     love.graphics.setColor(0.2, 0.8, 1)  -- Light blue
-    love.graphics.rectangle("fill", 10, 80, 100 * (player.experience / player.xpToNextLevel), 10)
+    love.graphics.rectangle("fill", 10, 80, 100 * xpRatio, 10)
     love.graphics.setColor(1, 1, 1)
-    love.graphics.print("Level " .. player.level, 115, 77)
+    love.graphics.print("Level " .. playerLevel, 115, 77)
+    
     -- IMPORTANT: Draw level-up menu LAST to ensure it appears on top of everything
     if levelUpMenu:isVisible() then
         levelUpMenu:draw()
@@ -733,28 +915,41 @@ end
 function spawnTestXpPellets()
     print("Spawning test XP pellets")
     
-    -- Spawn 5 test pellets around the player
-    for i = 1, 5 do
-        local offsetX = love.math.random(-100, 100)
-        local offsetY = love.math.random(-100, 100)
+    -- Use the ECS system if available
+    if ecsWorld then
+        -- Create 5 test pellets around the player
+        local playerCenterX = player.x + player.width / 2
+        local playerCenterY = player.y + player.height / 2
         
-        local pellet = xpManager:spawnXp(
-            player.x + player.width/2 + offsetX,
-            player.y + player.height/2 + offsetY,
-            love.math.random(1, 3)
-        )
+        -- Create pellets using the Bridge
+        local pellets = Bridge.createXpPellets(ecsWorld, playerCenterX, playerCenterY, 5, 10)
         
-        -- Make them immediately collectible
-        pellet.collectible = true
-        pellet.magnetizable = true
+        -- Make them immediately collectible and magnetizable
+        for _, pellet in ipairs(pellets) do
+            local xp = pellet:getComponent("xp")
+            xp.collectible = true
+            xp.magnetizable = true
+        end
         
-        -- Enable debug mode to see collision bounds
-        pellet.debug = true
+        print("Created " .. #pellets .. " test XP pellets using ECS")
+    else
+        -- Fallback to old system
+        for i = 1, 5 do
+            local offsetX = love.math.random(-50, 50)
+            local offsetY = love.math.random(-50, 50)
+            
+            local pellet = xpManager:spawnXp(
+                player.x + player.width/2 + offsetX,
+                player.y + player.height/2 + offsetY,
+                10
+            )
+            
+            pellet.collectible = true
+            pellet.magnetizable = true
+            pellet.debug = true
+        end
         
-        -- XP pellets are already added to the collision manager in their constructor
-        -- through BaseEntity, so we don't need to add them again
-        
-        print("Created test XP pellet at:", pellet.x, pellet.y)
+        print("Created 5 test XP pellets using legacy system")
     end
 end
 

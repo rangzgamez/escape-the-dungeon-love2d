@@ -110,6 +110,11 @@ function TransitionManager:update(dt)
     return self.active
 end
 
+-- Check if a transition is currently active
+function TransitionManager:isTransitioning()
+    return self.active
+end
+
 -- Draw transition effect
 function TransitionManager:draw()
     if not self.active then return end
@@ -187,11 +192,6 @@ function TransitionManager:draw()
     
     -- Reset color
     love.graphics.setColor(1, 1, 1, 1)
-end
-
--- Check if transition is currently active
-function TransitionManager:isActive()
-    return self.active
 end
 
 -- Easing functions

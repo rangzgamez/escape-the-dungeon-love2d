@@ -62,10 +62,9 @@ function TimeManager:update(dt)
                 self.targetTimeScale = nil
             end
         end
-        
-        return scaledDt
     end
     
+    -- Return the scaled dt
     return dt * self.timeScale
 end
 
@@ -73,17 +72,28 @@ end
 function TimeManager:getTimeScale()
     return self.timeScale
 end
--- Set time scale (optionally with smooth transition)
+
+-- Set the time scale
 function TimeManager:setTimeScale(scale, smooth)
-    -- if smooth then
-    -- let's only apply smoothing on BIG hits. so like, boss kills
-    -- this will be a TODO
-    --     -- Store as target and transition gradually in update
-    --     self.targetTimeScale = scale
-    -- else
-     -- Set immediately
-    self.timeScale = scale
-    --end
+    if smooth then
+        -- Set target for smooth transition
+        self.targetTimeScale = scale
+    else
+        -- Immediate change
+        self.timeScale = scale
+        self.targetTimeScale = nil
+    end
+end
+
+-- Reset the time manager
+function TimeManager:reset()
+    self.timeScale = 1
+    self.freezeTimer = 0
+    self.freezeDuration = 0
+    self.targetTimeScale = nil
+    self.transitionSpeed = nil
+    
+    print("Time manager reset")
 end
 
 return TimeManager

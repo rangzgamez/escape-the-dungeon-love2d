@@ -16,6 +16,7 @@ A fast-paced, vertical platformer built with LÖVE (Love2D) featuring fluid move
 - **Enemy AI**: Responsive enemies that react to player presence
 - **Time Effects**: Slow-motion and screen freeze for dramatic moments
 - **Comprehensive Debug Tools**: Visualize collision bounds, toggle effects, and test features
+- **Entity Component System**: Flexible and efficient architecture for game objects
 
 ## Getting Started
 
@@ -68,8 +69,25 @@ The game uses several architectural patterns:
 - **Finite State Machine**: Controls player states (idle, falling, dashing, dragging)
 - **Event System**: Handles communication between game components
 - **Manager Classes**: Organize game systems (particles, enemies, collisions, XP)
+- **Entity Component System (ECS)**: Provides a flexible and efficient way to structure game objects
 
 See the [architecture documentation](docs/architecture.md) for more details.
+
+### Entity Component System
+
+The game implements an Entity Component System (ECS) architecture for managing game objects:
+
+- **Entities**: Simple containers for components (player, enemies, XP pellets)
+- **Components**: Pure data containers for specific aspects (transform, physics, renderer)
+- **Systems**: Logic that operates on entities with specific components (physics, rendering, collision)
+
+The ECS architecture provides several benefits:
+- Composition over inheritance
+- Better code organization and reusability
+- Improved performance through data-oriented design
+- Easier to extend with new features
+
+See the [ECS Architecture Documentation](docs/ecs-architecture.md) for detailed information.
 
 ## Project Structure
 
@@ -78,6 +96,19 @@ vertical-jumper/
 ├── main.lua                 # Entry point
 ├── assets/                  # Game resources
 ├── lib/                     # Core systems
+│   ├── ecs/                 # Entity Component System
+│   │   ├── ecs.lua          # Main ECS module
+│   │   ├── entity.lua       # Entity class
+│   │   ├── entityManager.lua # Entity management
+│   │   ├── system.lua       # Base system class
+│   │   ├── systemManager.lua # System management
+│   │   ├── bridge.lua       # Bridge to legacy code
+│   │   └── systems/         # ECS systems
+│   │       ├── renderSystem.lua # Rendering system
+│   │       ├── physicsSystem.lua # Physics system
+│   │       ├── collisionSystem.lua # Collision system
+│   │       └── xpSystem.lua # XP system
+│   └── ...                  # Other libraries
 ├── states/                  # Player state machine
 ├── entities/                # Game objects
 │   ├── player.lua           # Player entity
@@ -90,6 +121,11 @@ vertical-jumper/
 │   ├── xpManager.lua        # XP system coordination
 │   └── ...                  # Other managers
 └── docs/                    # Documentation
+    ├── ecs-architecture.md  # ECS architecture documentation
+    ├── ecs-collision-system.md # ECS collision system
+    ├── ecs-render-system.md # ECS rendering system
+    ├── ecs-physics-system.md # ECS physics system
+    ├── ecs-xp-system.md     # ECS XP system
     ├── xp-system-design.md  # XP system documentation
     ├── debug-features.md    # Debug features guide
     └── ...                  # Other documentation
@@ -98,6 +134,22 @@ vertical-jumper/
 See the [project structure document](docs/project-structure.md) for more details.
 
 ## Key Systems
+
+### Entity Component System
+
+The game uses an Entity Component System (ECS) architecture for managing game objects:
+
+- **Collision System**: Efficient collision detection using spatial partitioning
+- **Physics System**: Handles movement, gravity, and other physical behaviors
+- **Render System**: Draws entities with various visual representations
+- **XP System**: Manages XP pellets and player progression
+
+See the ECS documentation for detailed information:
+- [ECS Architecture](docs/ecs-architecture.md)
+- [ECS Collision System](docs/ecs-collision-system.md)
+- [ECS Render System](docs/ecs-render-system.md)
+- [ECS Physics System](docs/ecs-physics-system.md)
+- [ECS XP System](docs/ecs-xp-system.md)
 
 ### XP System
 
@@ -131,6 +183,7 @@ Want to add new features? Check out the [extension guide](docs/extending.md) for
 - Implementing progression systems
 - Adding sound and music
 - Creating save systems
+- Extending the ECS with new components and systems
 
 ## Acknowledgments
 

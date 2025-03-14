@@ -3,8 +3,8 @@
 local BaseState = {}
 BaseState.__index = BaseState
 
-function BaseState:new(player)
-    local self = setmetatable({}, self)
+function BaseState.new(player)
+    local self = setmetatable({}, BaseState)
     self.player = player
     self.events = require("lib/events") -- Add events reference
     return self
