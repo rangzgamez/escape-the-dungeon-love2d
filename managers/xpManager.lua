@@ -12,9 +12,9 @@ function XpManager:new()
     self.pellets = {}
     
     -- Collection radius properties
-    self.baseCollectionRadius = 50 -- Base collection radius
+    self.baseCollectionRadius = 100 -- Base collection radius
     self.collectionRadiusBonus = 0 -- Bonus from upgrades
-    self.attractionStrength = 200  -- How fast pellets are pulled to player
+    self.attractionStrength = 300  -- How fast pellets are pulled to player
     
     return self
 end
@@ -39,12 +39,7 @@ function XpManager:onEnemyKill(data)
     -- Calculate enemy center position
     local enemyCenterX = enemy.x + (enemy.width or 0) / 2
     local enemyCenterY = enemy.y + (enemy.height or 0) / 2
-    
-    print("Enemy center position:", enemyCenterX, enemyCenterY)
-    
-    -- Track newly created pellets
-    local newPellets = {}
-    
+        
     -- Create pellets around the enemy
     for i = 1, pelletCount do
         -- Create pellets at the enemy's center with a small random offset
@@ -74,14 +69,9 @@ function XpManager:onEnemyKill(data)
         pellet.velocity.x = math.cos(angle) * speed
         pellet.velocity.y = math.sin(angle) * speed
         
-        print("Created XP pellet at:", pelletX, pelletY, "with velocity:", pellet.velocity.x, pellet.velocity.y)
         
         table.insert(self.pellets, pellet)
-        table.insert(newPellets, pellet)
     end
-    
-    -- Return the newly created pellets so they can be added to collision manager
-    return newPellets
 end
 
 function XpManager:update(dt, player, camera)
@@ -89,7 +79,6 @@ function XpManager:update(dt, player, camera)
     for i = #self.pellets, 1, -1 do
         local pellet = self.pellets[i]
         pellet:update(dt)
-        
         -- Remove inactive pellets
         if not pellet.active then
             table.remove(self.pellets, i)
@@ -142,7 +131,7 @@ function XpManager:applyMagneticAttraction(dt, player)
                 local ny = dy / distance
                 
                 -- Calculate attraction strength (stronger when closer)
-                local strength = magnetActive and self.attractionStrength * 1.5 or self.attractionStrength
+                local strength = magnetActive and self.attractionStrength * 1.5 or self.attractionStrength * 1.5
                 
                 -- Move pellet toward player
                 pellet.x = pellet.x + nx * strength * dt

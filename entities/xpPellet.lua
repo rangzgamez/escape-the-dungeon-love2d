@@ -7,7 +7,7 @@ XpPellet.__index = XpPellet
 
 function XpPellet:new(x, y, value)
     -- Call the parent constructor with entity-specific options
-    local self = BaseEntity.new(self, x, y, 20, 20, {
+    local self = BaseEntity.new(self, x, y, 10, 10, {
         type = "xpPellet",
         collisionLayer = "collectible",
         collidesWithLayers = {"player"}, -- Only collide with player
@@ -17,30 +17,42 @@ function XpPellet:new(x, y, value)
     -- XP-specific properties
     self.value = value or 1 -- XP value
     
-    -- Initialize velocity (will be set by XpManager)
+    -- Generate random angle and speed for the "explosion" effect
+    local angle = love.math.random() * math.pi * 2  -- Random angle in radians
+    local speed = love.math.random(1000, 2200)        -- Higher initial speed
+    
+    -- Apply initial velocity based on angle and speed
     self.velocity = {
-        x = 0,
-        y = 0
+        x = math.cos(angle) * speed,
+        y = math.sin(angle) * speed
     }
     
     -- Physics properties
-    self.gravity = 0--400
+    self.gravity = 0  -- Remove gravity for floaty feel
+    self.friction = 2.0  -- Higher friction to slow down quickly
+    self.initialMovementDuration = 0.5  -- Duration of initial movement
+    self.movementTimer = self.initialMovementDuration  -- Timer for movement phase
     
     -- Visual properties
+    self.rotation = 0
+    self.rotationSpeed = love.math.random(-3, 3)
     self.color = {0.2, 0.8, 1} -- Light blue for XP
+    self.scale = 1.0
+    self.pulseDirection = 1
+    self.pulseSpeed = love.math.random(2, 4)
+    
+    -- Sparkle effect
+    self.sparkleTimer = 0
+    self.sparkleInterval = love.math.random(0.5, 1.5)
+    self.sparkles = {}
     
     -- Gameplay properties
     self.collectible = false -- Start as not collectible
-    self.collectionDelay = 0.5 -- Delay before pellet can be collected
-    self.lifetime = 15.0 -- Longer lifetime
-    self.magnetizable = false -- Can't be pulled until collectible
+    self.collectionDelay = 0.3 -- Slightly longer delay so pellets have time to move
+    self.lifetime = 15.0 -- Lifetime
+    self.magnetizable = false -- Not magnetizable until collectible
     
-    -- Debug label properties
-    self.showDebugLabel = true -- Set to false to disable the label
-    
-    -- Print debug message to confirm creation
-    print("XP Pellet created at position:", x, y, "with value:", value)
-    
+    setmetatable(self, XpPellet)
     return self
 end
 
@@ -52,6 +64,21 @@ function XpPellet:update(dt)
         return
     end
     
+    -- Update initial movement phase
+    if self.movementTimer > 0 then
+        self.movementTimer = self.movementTimer - dt
+        
+        -- Apply friction to gradually slow down
+        self.velocity.x = self.velocity.x * (1 - self.friction * dt)
+        self.velocity.y = self.velocity.y * (1 - self.friction * dt)
+        
+        -- If movement phase is over, stop completely
+        if self.movementTimer <= 0 then
+            self.velocity.x = 0
+            self.velocity.y = 0
+        end
+    end
+    
     -- Update collection delay
     if not self.collectible then
         self.collectionDelay = self.collectionDelay - dt
@@ -59,32 +86,53 @@ function XpPellet:update(dt)
             self.collectible = true
             self.magnetizable = true -- Now it can be pulled
             
-            -- Stop all movement when becoming collectible
-            self.velocity.x = 0
-            self.velocity.y = 0
-            
             -- Add a burst of sparkles when becoming collectible
-            for i = 1, 12 do  -- Increased number of sparkles
-                local angle = math.random() * math.pi * 2
-                local distance = math.random(5, 20)
-                
+            for i = 1, 8 do
                 table.insert(self.sparkles, {
-                    x = math.cos(angle) * distance,
-                    y = math.sin(angle) * distance,
-                    size = love.math.random(3, 8),  -- Larger sparkles
-                    life = 0.8,  -- Longer life
-                    maxLife = 0.8
+                    x = love.math.random(-self.width, self.width),
+                    y = love.math.random(-self.height, self.height),
+                    size = love.math.random(3, 6),
+                    life = 0.7,
+                    maxLife = 0.7
                 })
             end
         end
     end
     
-    -- Apply gravity only if not collectible
-    if not self.collectible then
-        self.velocity.y = self.velocity.y + self.gravity * dt
-        
-        -- Apply dampening to slow down movement
-        self.velocity.x = self.velocity.x * 0.95
+    -- Update rotation
+    self.rotation = self.rotation + self.rotationSpeed * dt
+    
+    -- Enhanced pulsing effect
+    self.scale = self.scale + self.pulseDirection * self.pulseSpeed * dt * 0.25
+    if self.scale > 1.3 then
+        self.scale = 1.3
+        self.pulseDirection = -1
+    elseif self.scale < 0.7 then
+        self.scale = 0.7
+        self.pulseDirection = 1
+    end
+    
+    -- Update sparkle effect
+    self.sparkleTimer = self.sparkleTimer - dt
+    if self.sparkleTimer <= 0 then
+        -- Create a new sparkle
+        table.insert(self.sparkles, {
+            x = love.math.random(-self.width, self.width),
+            y = love.math.random(-self.height, self.height),
+            size = love.math.random(2, 5),
+            life = 0.5,
+            maxLife = 0.5
+        })
+        self.sparkleTimer = self.sparkleInterval
+    end
+    
+    -- Update existing sparkles
+    for i = #self.sparkles, 1, -1 do
+        local sparkle = self.sparkles[i]
+        sparkle.life = sparkle.life - dt
+        if sparkle.life <= 0 then
+            table.remove(self.sparkles, i)
+        end
     end
     
     -- Call parent update to apply velocity and position
@@ -95,21 +143,38 @@ function XpPellet:draw()
     if not self.active then return end
     
     -- Draw outer glow first (always visible) - make it larger and more vibrant
-    love.graphics.setColor(self.color[1], self.color[2], self.color[3], 0.4)
-    love.graphics.circle("fill", self.x + self.width/2, self.y + self.height/2, self.width * 2.5)
+    -- love.graphics.setColor(self.color[1], self.color[2], self.color[3], 0.4)
+    -- love.graphics.circle("fill", self.x + self.width/2, self.y + self.height/2, self.width * 1.1)
     
-    love.graphics.setColor(self.color[1], self.color[2], self.color[3], 0.6)
-    love.graphics.circle("fill", self.x + self.width/2, self.y + self.height/2, self.width * 1.8)
-        
+    -- love.graphics.setColor(self.color[1], self.color[2], self.color[3], 0.6)
+    -- love.graphics.circle("fill", self.x + self.width/2, self.y + self.height/2, self.width * 1.2)
+    
+    -- Draw sparkles
+    for _, sparkle in ipairs(self.sparkles) do
+        local alpha = sparkle.life / sparkle.maxLife
+        love.graphics.setColor(1, 1, 1, alpha)
+        love.graphics.circle("fill", 
+            self.x + self.width/2 + sparkle.x, 
+            self.y + self.height/2 + sparkle.y, 
+            sparkle.size * alpha
+        )
+    end
+    
     -- Save current transformation state
     love.graphics.push()
     
     -- Apply transformations
     love.graphics.translate(self.x + self.width/2, self.y + self.height/2)
+    love.graphics.rotate(self.rotation)
+    love.graphics.scale(self.scale, self.scale)
     
     -- Draw gem shape for XP pellet - make it brighter
     -- If not collectible yet, make it slightly darker
-    love.graphics.setColor(self.color[1], self.color[2], self.color[3])
+    if self.collectible then
+        love.graphics.setColor(self.color[1] + 0.2, self.color[2] + 0.2, self.color[3] + 0.2)
+    else
+        love.graphics.setColor(self.color[1], self.color[2], self.color[3])
+    end
     
     love.graphics.polygon("fill", 
         0, -self.height/2,  -- Top point
@@ -142,92 +207,27 @@ function XpPellet:draw()
         self.width/4, -self.height/4
     )
     
-    -- Add a small "XP" text in the center for clarity
-    love.graphics.setColor(1, .5, .5, self.collectible and 0.9 or 0.6)
-    local font = love.graphics.getFont()
-    local text = "XP"
-    local textWidth = font:getWidth(text)
-    local textHeight = font:getHeight()
-    love.graphics.print(text, -textWidth/2, -textHeight/2, 0, 0.7, 0.7)
-    
     -- Restore transformation state
     love.graphics.pop()
     
-    -- Draw debug label above the pellet
-    if self.showDebugLabel then
-        local labelText = "XP Pellet"
-        local font = love.graphics.getFont()
-        local textWidth = font:getWidth(labelText)
-        
-        -- Draw background for better visibility - make it more opaque and larger
-        love.graphics.setColor(0, 0, 0, 0.9)  -- More opaque background
-        love.graphics.rectangle("fill", 
-            self.x + self.width/2 - textWidth/2 - 4, 
-            self.y - 30,  -- Position higher above the pellet
-            textWidth + 8,  -- Wider background
-            20)  -- Taller background
-            
-        -- Draw text - make it larger and brighter
-        love.graphics.setColor(1, 1, 1, 1)
-        love.graphics.print(
-            labelText, 
-            self.x + self.width/2 - textWidth/2, 
-            self.y - 28,  -- Adjust text position to match new background
-            0,  -- Rotation
-            1.2, 1.2  -- Scale text to make it larger
-        )
-        
-        -- Add position info to the debug label
-        local posText = string.format("Pos: %.0f, %.0f", self.x, self.y)
-        local posWidth = font:getWidth(posText)
-        
-        -- Draw background for position text
-        love.graphics.setColor(0, 0, 0, 0.9)
-        love.graphics.rectangle("fill", 
-            self.x + self.width/2 - posWidth/2 - 4, 
-            self.y - 10,  -- Position below the main label
-            posWidth + 8,
-            20)
-            
-        -- Draw position text
-        love.graphics.setColor(1, 1, 0, 1)  -- Yellow for position
-        love.graphics.print(
-            posText, 
-            self.x + self.width/2 - posWidth/2, 
-            self.y - 8,
-            0,
-            1.0, 1.0
-        )
-        
-        -- Print debug info to console
-        if love.timer.getTime() % 2 < 0.1 then  -- Only print occasionally to avoid spam
-            print("Drawing XP Pellet label at:", self.x, self.y)
-        end
-    end
-    
-    -- Always draw visual bounds indicator (red) to show where the pellet thinks it is
-    love.graphics.setColor(1, 0, 0, 0.5)
-    love.graphics.rectangle("line", self.x, self.y, self.width, self.height)
-    
-    -- Debug draw collision bounds (white) if needed
-    if self.debug then
-        local bounds = self:getBounds()
-        love.graphics.setColor(1, 1, 1, 0.7)  -- White with higher opacity
-        love.graphics.rectangle("line", bounds.x, bounds.y, bounds.width, bounds.height)
-    end
+    -- Debug draw if needed
+    -- if self.debug then
+    --     local bounds = self:getBounds()
+    --     love.graphics.setColor(0, 1, 0, 0.5)
+    --     love.graphics.rectangle("line", bounds.x, bounds.y, bounds.width, bounds.height)
+    -- end
 end
 
 function XpPellet:onCollision(other, collisionData)
     -- Only handle collision with player
     if other.type == "player" and self.collectible then
-        print('hello??')
         -- Mark as collected - the player will handle the actual XP logic
         self.active = false
         return true
     end
     
     -- Let the parent handle any other collisions
-    --return BaseEntity.onCollision(self, other, collisionData)
+    return BaseEntity.onCollision(self, other, collisionData)
 end
 
 -- Simplified collect method - just returns the value and marks as inactive
@@ -263,23 +263,10 @@ function XpPellet:applyMagneticForce(targetX, targetY, strength)
         -- Calculate force (stronger when closer)
         local force = strength * (1 - math.min(1, distance / 200))
         
-        -- Apply force to velocity (only if collectible)
-        if self.collectible then
-            self.velocity.x = nx * force
-            self.velocity.y = ny * force
-        end
+        -- Apply force to velocity
+        self.velocity.x = self.velocity.x + nx * force
+        self.velocity.y = self.velocity.y + ny * force
     end
-end
-
--- Override getBounds to ensure it returns the correct collision area
-function XpPellet:getBounds()
-    -- Return the actual position and size without any offsets
-    return {
-        x = self.x,
-        y = self.y,
-        width = self.width,
-        height = self.height
-    }
 end
 
 return XpPellet

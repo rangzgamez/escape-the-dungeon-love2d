@@ -142,7 +142,7 @@ local function setupEventListeners()
         timeManager:onEnemyKill(data)
         
         -- Get the XP pellets created from the enemy kill
-        local xpPellets = xpManager:onEnemyKill(data)
+        xpManager:onEnemyKill(data)
         
         -- XP pellets are already added to the collision manager in their constructor
         -- through BaseEntity, so we don't need to add them again
@@ -589,7 +589,8 @@ function love.draw()
             )
         end
     end
-    
+    xpManager:draw()
+
     love.graphics.pop()
 
     camera:drawLava()
@@ -712,7 +713,6 @@ function love.draw()
         love.graphics.print("Jump in air for double-jump", 10, 90)
     end
 
-    xpManager:draw()
     player:drawXpPopup()
 
     love.graphics.setColor(0.2, 0.2, 0.2)
