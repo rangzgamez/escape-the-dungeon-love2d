@@ -69,10 +69,6 @@ function Physics.applyDashMovement(player, direction, speed, power, dt)
     centerX = centerX + deltaX
     centerY = centerY + deltaY
     
-    -- Convert back to top-left for the player object
-    player.x = centerX - player.width/2
-    player.y = centerY - player.height/2
-    
     return centerX, centerY  -- Return center position for afterimages
 end
 

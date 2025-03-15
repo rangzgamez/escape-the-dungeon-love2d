@@ -151,18 +151,9 @@ function InputManager:endDrag(x, y, camera)
     self.currentDragX = x
     self.currentDragY = y
     
-    -- Adjust for camera position if provided
-    local adjustedY = y
-    if camera then
-        adjustedY = y + camera.y - love.graphics.getHeight() / 2
-    end
-    
-    self.worldCurrentDragY = adjustedY
-    
-    -- Update drag vector
+    -- Update drag vector 
     self.dragVector.x = x - self.dragStartX
-    self.dragVector.y = adjustedY - self.worldDragStartY
-    
+    self.dragVector.y = y - self.dragStartY
     -- Calculate drag distance
     local dragDistance = math.sqrt(self.dragVector.x^2 + self.dragVector.y^2)
     local isSignificantDrag = dragDistance > self.minDragDistance

@@ -25,16 +25,10 @@ function DashingState:enter(prevState, data)
     
     -- Clear after image positions
     self.player.afterImagePositions = {}
-    
     -- Set up dash parameters
     self.dashDirection = data.direction
     self.dashPower = data.power
     self.dashTimeLeft = self.player.minDashDuration + data.power * (self.player.maxDashDuration - self.player.minDashDuration)
-    
-    -- Log the dash parameters at start
-    -- Physics.logDashParams("Dash Start", self.player.x, self.player.y, 
-    --                     self.dashDirection, self.player.dashSpeed, self.dashPower, self.dashTimeLeft)
-    
     -- Fire event for visual effects
     self.events.fire("playerDashStarted", {
         power = self.dashPower,
@@ -54,7 +48,7 @@ function DashingState:update(dt)
     else
         self.afterImageTimer = self.afterImageTimer - dt
     end
-    
+
     -- Use the shared Physics module to move the player exactly as calculated in the trajectory
     local centerX, centerY = Physics.applyDashMovement(
         self.player,       -- player object 
@@ -148,6 +142,11 @@ end
 function DashingState:onDragEnd(data)
     if self.player:canJump() then
         self.player:deductJump()
+        --reset dash parameters
+        self.afterImageTimer = nil
+        self.dashTimeLeft = 0
+        self.dashDirection = nil
+        self.dashPower = nil
         self.player.stateMachine:change("Dashing", data)
     end
 end
