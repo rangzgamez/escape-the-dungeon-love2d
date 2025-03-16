@@ -316,20 +316,16 @@ function InputManager:mousereleased(x, y, button, camera)
     return false
 end
 
-function InputManager:touchpressed(id, x, y, camera, player)
-    local started = self:startDrag(x, y, camera)
-    if started and player then
-        self:setTargetPlayer(player)
-    end
-    return started
+function InputManager:touchpressed(x, y, ...)
+    return self:mousepressed(x, y, 1, ...)
 end
 
-function InputManager:touchmoved(id, x, y, camera)
-    return self:updateDrag(x, y, camera)
+function InputManager:touchmoved(x, y, ...)
+    return self:mousemoved(x, y, ...)
 end
 
-function InputManager:touchreleased(id, x, y, camera)
-    return self:endDrag(x, y, camera)
+function InputManager:touchreleased(x, y, ...)
+    return self:mousereleased(x, y, 1, ...)
 end
 
 -- Draw drag visualization (trajectory, etc.)

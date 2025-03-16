@@ -163,7 +163,13 @@ function LevelUpMenu:update(dt)
         self.scale = 0.8 + progress * 0.2 -- Scale from 0.8 to 1.0
     end
 end
+function LevelUpMenu:handleInputStart(x, y, button)
+    return self:mousepressed(x, y, button or 1)
+end
 
+function LevelUpMenu:handleInputMove(x, y)
+    return self:mousemoved(x, y)
+end
 function LevelUpMenu:draw()
     if not self.visible then return end
     

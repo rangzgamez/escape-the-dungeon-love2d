@@ -19,6 +19,35 @@ function ParticleManager:new()
     return self
 end
 
+function ParticleManager:createLevelUpEffect(x, y)
+    -- Check if particles are disabled globally
+    if _G.disableParticles then return end
+    
+    -- Check if the canvas exists
+    if not self.dustCanvas then return end
+    
+    -- Create a new particle system for level up effect
+    local levelUpParticles = love.graphics.newParticleSystem(self.dustCanvas, 100)
+    
+    -- Set particle properties
+    levelUpParticles:setParticleLifetime(0.5, 1.5)
+    levelUpParticles:setEmissionRate(50)
+    levelUpParticles:setSizeVariation(1)
+    levelUpParticles:setLinearAcceleration(-50, -50, 50, 50)
+    levelUpParticles:setColors(0.2, 0.8, 1, 1, 0.4, 0.6, 1, 0)  -- Light blue to cyan
+    levelUpParticles:setSizes(2, 4, 1)
+    levelUpParticles:setPosition(x, y)
+    levelUpParticles:setSpread(math.pi*2)  -- 360 degree spread
+    
+    -- Emit particles
+    levelUpParticles:emit(20)
+    
+    -- Store the system
+    table.insert(self.particleSystems, {
+        system = levelUpParticles,
+        timer = 2.0
+    })
+end
 function ParticleManager:createDustEffect(x, y, height)
     -- Check if particles are disabled globally
     if _G.disableParticles then return end

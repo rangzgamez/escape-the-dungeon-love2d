@@ -5,6 +5,7 @@ local GroundedState = require("states/groundedState")
 local FallingState = require("states/fallingState")
 local DashingState = require("states/dashingState")
 local BaseEntity = require("entities/baseEntity")
+local LevelUpState = require("states/levelUpState")
 
 local Player = setmetatable({}, {__index = BaseEntity})
 Player.__index = Player
@@ -84,7 +85,8 @@ function Player:new(x, y)
     self.stateMachine:add("Grounded", GroundedState:new(self))
     self.stateMachine:add("Falling", FallingState:new(self))
     self.stateMachine:add("Dashing", DashingState:new(self))
-    
+    self.stateMachine:add("LevelUp", LevelUpState:new(self))
+
     -- Start in the grounded state (on ground)
     self.stateMachine:change("Falling")
     setmetatable(self, Player)
@@ -134,7 +136,41 @@ end
 --     local enemy = data.enemy
 --     self.stateMachine:getCurrentState():enemyCollision(enemy)
 -- end
-
+-- Add this function to Player class to get color based on midair jumps
+function Player:getJumpColor()
+    -- Default color if calculations fail
+    local defaultColor = {0.2, 0.6, 1}
+    
+    -- Safety check
+    if not self.midairJumps or not self.maxMidairJumps then
+        return defaultColor
+    end
+    
+    -- Calculate color based on jumps remaining
+    local jumpRatio = self.midairJumps / self.maxMidairJumps
+    
+    -- Color gradient from red (0 jumps) to yellow (half jumps) to green (full jumps)
+    if jumpRatio <= 0 then
+        -- No jumps - red
+        return {1, 0.2, 0.2}
+    elseif jumpRatio < 0.5 then
+        -- Less than half - orange to yellow gradient
+        local t = jumpRatio * 2 -- Scale to 0-1 range for the first half
+        return {
+            1,                  -- Red stays at 1
+            0.2 + t * 0.8,      -- Green increases from 0.2 to 1
+            0.2                 -- Blue stays low
+        }
+    else
+        -- More than half - yellow to green gradient
+        local t = (jumpRatio - 0.5) * 2 -- Scale to 0-1 range for the second half
+        return {
+            1 - t * 0.7,        -- Red decreases from 1 to 0.3
+            1,                  -- Green stays at 1
+            0.2 + t * 0.3       -- Blue increases slightly
+        }
+    end
+end
 -- Draw function
 function Player:draw()
     love.graphics.print("State: " .. self.stateMachine.current:getName(), self.x, self.y-100)
@@ -532,6 +568,9 @@ function Player:addExperience(amount)
     return amount
 end
 
+function Player:onLevelUpMenuHidden()
+    self.stateMachine.current:onLevelUpMenuHidden()
+end
 -- Level up method
 function Player:levelUp()
     -- Increase level
@@ -544,10 +583,11 @@ function Player:levelUp()
     self.experience = self.experience - self.xpToNextLevel
     self.xpToNextLevel = math.floor(self.xpToNextLevel * 1.5) -- 50% more XP needed for next level
     
-    -- Fire level up event
+    -- Fire level up event - other systems will handle showing the menu
     Events.fire("playerLevelUp", {
         player = self,
-        newLevel = self.level
+        newLevel = self.level,
+        requiresMenu = true
     })
     
     -- If we still have enough XP for another level up, recursively level up again

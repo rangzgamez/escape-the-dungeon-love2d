@@ -28,4 +28,7 @@ function BaseState:getName() return "BaseState" end
 function BaseState:onDragEnd() end
 function BaseState:enemyCollision(enemy) end
 function BaseState:onLandOnGround() end
+function BaseState:onLevelUpMenuHidden()
+    self.player.stateMachine:change('LevelUp')
+end
 return BaseState

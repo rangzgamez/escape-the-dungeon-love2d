@@ -51,7 +51,7 @@ function XpPellet:new(x, y, value)
     self.collectionDelay = 0.3 -- Slightly longer delay so pellets have time to move
     self.lifetime = 15.0 -- Lifetime
     self.magnetizable = false -- Not magnetizable until collectible
-    
+    self.attracted = false -- when attracted, will always move towards playerß
     setmetatable(self, XpPellet)
     return self
 end
@@ -255,7 +255,8 @@ function XpPellet:applyMagneticForce(targetX, targetY, strength)
     local distance = math.sqrt(dx*dx + dy*dy)
     
     -- Apply force if within range
-    if distance > 0 then
+    if self.attracted or distance > 0 then
+        self.attracted = true;
         -- Normalize direction vector
         local nx = dx / distance
         local ny = dy / distance

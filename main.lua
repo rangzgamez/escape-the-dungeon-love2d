@@ -43,7 +43,7 @@ local startHeight = 0
 local isDragging = false
 
 -- Game settings
-local settingsVisible = true  -- Toggle for settings menu visibility
+local settingsVisible = false  -- Toggle for settings menu visibility
 local slowDownWhileDragging = false  -- Option to slow time during drag
 local pauseWhileDragging = true  -- Option to pause game during drag
 local slowDownFactor = 0.3  -- Game runs at 30% speed when dragging
@@ -53,8 +53,8 @@ local showDebugInfo = false
 local debugInfoTimer = 0
 local debugInfoInterval = 1 -- Update debug info every second
 local debugMode = true -- Enable debug features
-local disableParticles = true -- Debug option to disable particle effects
-local showCollisionBounds = true -- Debug option to show collision bounds
+local disableParticles = false -- Debug option to disable particle effects
+local showCollisionBounds = false -- Debug option to show collision bounds
 
 -- Setup event handlers for player state changes
 local function setupEventListeners()
@@ -170,6 +170,30 @@ local function setupEventListeners()
         
         -- Show temporary text on screen
         -- You can add this functionality if desired
+    end)
+    Events.on("levelUpStateParticle", function(data)
+        if particleManager then
+            particleManager:createLevelUpEffect(data.x, data.y)
+        end
+    end)
+    
+    Events.on("levelUpMenuHidden", function()
+        player:onLevelUpMenuHidden()
+    end)
+    
+    -- Add this event handler to properly show the level-up menu when needed
+    Events.on("playerLevelUp", function(data)
+        if data.requiresMenu and levelUpMenu and not levelUpMenu:isVisible() then
+            -- Pause the game during level-up
+            timeManager:setTimeScale(0)
+            -- Show the level-up menu
+            levelUpMenu:show()
+        end
+    end)
+    
+    Events.on("playerExitLevelUpState", function(data)
+        -- Resume normal game speed when exiting level up state
+        timeManager:setTimeScale(1)
     end)
     -- Debug state changes if debug mode is on
     if debugMode then
@@ -371,10 +395,8 @@ function love.update(dt)
         levelUpMenu:show()
     end
 
-    -- Update level-up menu if visible
-    if levelUpMenu:isVisible() then
-        levelUpMenu:update(dt)
-    end
+
+    
 
     -- Always update the player's XP popup text (it's just visual)
     player:updateXpPopup(dt)
@@ -382,7 +404,18 @@ function love.update(dt)
     if not disableParticles then
         particleManager:update(dt)
     end
-    if not levelUpMenu:isVisible() then
+    -- Update level-up menu if visible
+    if levelUpMenu:isVisible() then
+        levelUpMenu:update(dt)
+    elseif player.stateMachine:getCurrentState():getName() == "LevelUp" then
+        -- When in LevelUp state but game is paused, still update the player state
+        player:update(dt)
+        
+        -- Also update particle manager to show effects
+        if not disableParticles then
+            particleManager:update(dt)
+        end
+    else
         updatePhysics(dt)
     end
 end
@@ -438,115 +471,126 @@ function love.keypressed(key)
         settingsVisible = not settingsVisible
     end
 end
-
--- Mouse pressed (start drag)
+-- Replace the existing mouse/touch handlers with these unified versions
 function love.mousepressed(x, y, button)
-    -- Check if level-up menu is active first
-    if levelUpMenu:isVisible() then
-        levelUpMenu:mousepressed(x, y, button)
-        return
-    end
-    -- Check if clicking on settings UI
-    if settingsVisible then
-        -- Check if clicking on slow down option
-        if x >= 10 and x <= 30 and y >= 130 and y <= 150 then
-            slowDownWhileDragging = not slowDownWhileDragging
-            -- Disable pause if slow down is enabled
-            if slowDownWhileDragging then
-                pauseWhileDragging = false
-            end
-            return
-        end
-        -- Check if clicking on pause option
-        if x >= 10 and x <= 30 and y >= 170 and y <= 190 then
-            pauseWhileDragging = not pauseWhileDragging
-            -- Disable slow down if pause is enabled
-            if pauseWhileDragging then
-                slowDownWhileDragging = false
-            end
-            return
-        end
-        
-        -- Check if clicking on disable particles option
-        if debugMode and x >= 10 and x <= 30 and y >= 210 and y <= 230 then
-            disableParticles = not disableParticles
-            return
-        end
-        
-        -- Check if clicking on show collision bounds option
-        if debugMode and x >= 10 and x <= 30 and y >= 240 and y <= 260 then
-            showCollisionBounds = not showCollisionBounds
-            return
-        end
-    end
-
-    if button == 1 and not gameOver then -- Left mouse button
-        inputManager:mousepressed(x, y, button, camera, player)
-    end
+    handleInputStart(x, y, button)
 end
 
--- Mouse moved (update drag)
 function love.mousemoved(x, y)
-    if levelUpMenu:isVisible() then
-        levelUpMenu:mousemoved(x, y)
-        return
-    end
-    if not gameOver then
-        inputManager:mousemoved(x, y, camera, player)
-    end
+    handleInputMove(x, y)
 end
 
--- Mouse released (end drag and jump)
 function love.mousereleased(x, y, button)
-    if button == 1 and not gameOver then -- Left mouse button
-        inputManager:mousereleased(x, y, button, camera, player)
-    end
+    handleInputEnd(x, y, button)
 end
 
--- Touch controls for mobile devices
 function love.touchpressed(id, x, y)
-    if levelUpMenu:isVisible() then
-        levelUpMenu:touchpressed(id, x, y)
-        return
-    end
-    -- Check if clicking on settings UI
-    if settingsVisible then
-        -- Check if clicking on slow down option
-        if x >= 10 and x <= 30 and y >= 130 and y <= 150 then
-            slowDownWhileDragging = not slowDownWhileDragging
-            -- Disable pause if slow down is enabled
-            if slowDownWhileDragging then
-                pauseWhileDragging = false
-            end
-            return
-        end
-        -- Check if clicking on pause option
-        if x >= 10 and x <= 30 and y >= 170 and y <= 190 then
-            pauseWhileDragging = not pauseWhileDragging
-            -- Disable slow down if pause is enabled
-            if pauseWhileDragging then
-                slowDownWhileDragging = false
-            end
-            return
-        end
-    end
-
-    if not gameOver then
-        inputManager:touchpressed(x, y + camera.y - MOBILE_HEIGHT / 2, player)
-    end
+    -- Touch ID is ignored - we're treating all touches the same
+    handleInputStart(x, y, 1) -- Use button 1 (left mouse button) for touches
 end
 
 function love.touchmoved(id, x, y)
-    if not gameOver then
-        inputManager:touchmoved(x, y + camera.y - MOBILE_HEIGHT / 2, player)
-    end
+    handleInputMove(x, y)
 end
 
 function love.touchreleased(id, x, y)
-    if not gameOver then
-        inputManager:touchReleased(particleManager, player)
+    handleInputEnd(x, y, 1) -- Use button 1 (left mouse button) for touches
+end
+function handleInputStart(x, y, button)
+    -- First check if level-up menu is visible
+    if levelUpMenu:isVisible() then
+        levelUpMenu:handleInputStart(x, y, button)
+        return
+    end
+    
+    -- Check if clicking on settings UI
+    if settingsVisible then
+        -- Handle settings UI interactions
+        if handleSettingsUIClick(x, y) then
+            return -- Input was handled by settings
+        end
+    end
+
+    -- Only handle left mouse button (or any touch)
+    if (button == 1 or button == nil) and not gameOver then
+        -- For touch input on mobile, adjust for camera position
+        if love.system.getOS() == "iOS" or love.system.getOS() == "Android" then
+            inputManager:mousepressed(x, y, 1, camera, player)
+        else
+            inputManager:mousepressed(x, y, 1, camera, player)
+        end
     end
 end
+
+function handleInputMove(x, y)
+    -- Check if level-up menu is handling input
+    if levelUpMenu:isVisible() then
+        levelUpMenu:handleInputMove(x, y)
+        return
+    end
+    
+    if not gameOver then
+        -- For touch input on mobile, adjust for camera position
+        if love.system.getOS() == "iOS" or love.system.getOS() == "Android" then
+            inputManager:mousemoved(x, y, camera)
+        else
+            inputManager:mousemoved(x, y, camera)
+        end
+    end
+end
+
+function handleInputEnd(x, y, button)
+    -- Only handle left mouse button (or any touch)
+    if (button == 1 or button == nil) and not gameOver then
+        -- For touch input on mobile, adjust for camera position
+        if love.system.getOS() == "iOS" or love.system.getOS() == "Android" then
+            inputManager:mousereleased(x, y, 1, camera)
+        else
+            inputManager:mousereleased(x, y, 1, camera)
+        end
+    end
+end
+
+-- Helper function to handle settings UI interactions
+function handleSettingsUIClick(x, y)
+    -- Check if clicking on slow down option
+    if x >= 10 and x <= 30 and y >= 130 and y <= 150 then
+        slowDownWhileDragging = not slowDownWhileDragging
+        -- Disable pause if slow down is enabled
+        if slowDownWhileDragging then
+            pauseWhileDragging = false
+        end
+        return true
+    end
+    
+    -- Check if clicking on pause option
+    if x >= 10 and x <= 30 and y >= 170 and y <= 190 then
+        pauseWhileDragging = not pauseWhileDragging
+        -- Disable slow down if pause is enabled
+        if pauseWhileDragging then
+            slowDownWhileDragging = false
+        end
+        return true
+    end
+    
+    -- Check if clicking on debug options
+    if debugMode then
+        -- Disable particles option
+        if x >= 10 and x <= 30 and y >= 210 and y <= 230 then
+            disableParticles = not disableParticles
+            return true
+        end
+        
+        -- Show collision bounds option
+        if x >= 10 and x <= 30 and y >= 240 and y <= 260 then
+            showCollisionBounds = not showCollisionBounds
+            return true
+        end
+    end
+    
+    return false -- Click wasn't on a settings UI element
+end
+
 
 -- Draw the game
 function love.draw()

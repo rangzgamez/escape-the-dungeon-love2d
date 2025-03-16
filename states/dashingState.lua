@@ -112,32 +112,54 @@ function DashingState:enemyCollision(enemy)
     self.player:incrementCombo()
 end
 
+-- Update DashingState's draw method to incorporate jump-based colors
 function DashingState:draw()
-    -- Draw player in red when dashing
-    love.graphics.setColor(1, 0.3, 0.3)
-    love.graphics.rectangle("fill", self.player.x, self.player.y, self.player.width, self.player.height)
+    -- Get base color from jump status - but enhance it for dash effect
+    local jumpColor = self.player:getJumpColor()
     
-    -- Draw after-images
+    -- Enhance color for dashing - make it more vibrant/lighter
+    local dashColor = {
+        math.min(1, jumpColor[1] + 0.2),
+        math.min(1, jumpColor[2] + 0.2),
+        math.min(1, jumpColor[3] + 0.2)
+    }
+    
+    -- Draw afterimages
     if self.player.afterImagePositions and #self.player.afterImagePositions > 0 then
         for i, pos in ipairs(self.player.afterImagePositions) do
             -- Fade opacity based on age of after-image
             local opacity = i / #self.player.afterImagePositions * 0.7
-            love.graphics.setColor(1, 0.3, 0.3, opacity)
+            
+            -- Use a color based on the jump color but with fading opacity
+            love.graphics.setColor(dashColor[1], dashColor[2], dashColor[3], opacity)
             love.graphics.rectangle("fill", pos.x, pos.y, self.player.width, self.player.height)
         end
     end
     
-    -- Draw motion blur lines behind player to indicate speed
-    love.graphics.setColor(1, 0.3, 0.3, 0.5) -- Red with transparency
+    -- Draw main player in dash color
+    love.graphics.setColor(dashColor)
+    love.graphics.rectangle("fill", self.player.x, self.player.y, self.player.width, self.player.height)
+    
+    -- Draw dash streak/motion blur using jump colors
+    love.graphics.setColor(dashColor[1], dashColor[2], dashColor[3], 0.5)
     for i = 1, 5 do
-        local dashLength = i * 5
+        local streakLength = i * 5
         love.graphics.line(
             self.player.x + self.player.width/2, 
             self.player.y + self.player.height/2,
-            self.player.x + self.player.width/2 - self.dashDirection.x * dashLength,
-            self.player.y + self.player.height/2 - self.dashDirection.y * dashLength
+            self.player.x + self.player.width/2 - self.dashDirection.x * streakLength,
+            self.player.y + self.player.height/2 - self.dashDirection.y * streakLength
         )
     end
+    
+    -- Draw direction line with jump color
+    love.graphics.setColor(dashColor[1], dashColor[2], dashColor[3], 0.8)
+    love.graphics.line(
+        self.player.x + self.player.width/2,
+        self.player.y + self.player.height/2,
+        self.player.x + self.player.width/2 + self.dashDirection.x * 30,
+        self.player.y + self.player.height/2 + self.dashDirection.y * 30
+    )
 end
 function DashingState:onDragEnd(data)
     if self.player:canJump() then

@@ -119,7 +119,8 @@ function XpManager:applyMagneticAttraction(dt, player)
             local distance = math.sqrt(dx * dx + dy * dy)
             
             -- Pellet attraction logic - always pull them closer
-            if distance < magnetRadius then
+            if pellet.attracted or distance < magnetRadius then
+                pellet.attracted = true
                 -- Normalize direction
                 local nx = dx / distance
                 local ny = dy / distance
