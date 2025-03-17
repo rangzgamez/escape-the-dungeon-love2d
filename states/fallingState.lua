@@ -96,8 +96,6 @@ end
 function FallingState:enemyCollision(enemy)
     -- Enemy hits player - player takes damage
     self.player:takeDamage()
-    -- Reset combo when hit
-    self.player:resetCombo()
 end
 
 function FallingState:onLandOnGround()

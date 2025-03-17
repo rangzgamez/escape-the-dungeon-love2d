@@ -12,6 +12,8 @@ local TransitionManager = require("managers/transitionManager")
 local InputManager = require('managers/inputManager')
 local XpManager = require("managers/xpManager")
 local LevelUpMenu = require("ui/levelUpMenu")
+local ComboManager = require("managers/comboManager")
+
 --local KillFloor = require("entities/killFloor")
 -- Mobile resolution settings
 local MOBILE_WIDTH = 390  -- iPhone screen width
@@ -60,7 +62,6 @@ local showCollisionBounds = false -- Debug option to show collision bounds
 local function setupEventListeners()
     -- Clear any existing listeners first
     Events.clearAll()
-    
     Events.on("dragStart", function(data)
         if pauseWhileDragging then
             timeManager:setTimeScale(0)
@@ -72,7 +73,13 @@ local function setupEventListeners()
         camera:clearShake()
 
     end)
-    
+    Events.on("playerHit", function(data)
+        ComboManager.onPlayerHit()
+        camera:shake(3, 0.2)
+    end)
+    Events.on("playerLanded", function(data)
+        ComboManager.onPlayerLanded()
+    end)
     Events.on("dragEnd", function(data)
         if pauseWhileDragging or slowDownWhileDragging then
             timeManager:setTimeScale(1, true)
@@ -136,11 +143,10 @@ local function setupEventListeners()
     end)
     -- Handle enemy kill events
     Events.on("enemyKill", function(data)
-        local comboCount = data.comboCount or 0
         local enemy = data.enemy
         camera:onEnemyKill(data)
         timeManager:onEnemyKill(data)
-        
+        ComboManager.onEnemyKill(data)
         -- Get the XP pellets created from the enemy kill
         xpManager:onEnemyKill(data)
         
@@ -217,6 +223,7 @@ local function initializeWorld()
     CollisionManager.clear()
     -- Initialize particle manager
     particleManager = ParticleManager:new()
+    ComboManager.initialize()
 
     -- Initialize world generator
     world = World:new()
@@ -299,6 +306,7 @@ local function updatePhysics(dt)
 
     -- Update player position
     player:update(dt)
+    ComboManager.update(dt,player)
 
     -- Check horizontal screen bounds
     player:checkHorizontalBounds(MOBILE_WIDTH)
@@ -321,13 +329,12 @@ local function updatePhysics(dt)
    -- enemyManager:handleCollisions(player, particleManager)
     
     -- Add combo points to score if player has an active combo of 5 or higher
-    if player.comboCount >= 5 and player.affirmationTimer and player.affirmationTimer > player.comboMaxTime - 0.1 then
-        -- Add points based on combo level (only when combo is refreshed)
-        -- More points for higher combos, with a bonus threshold at 5
-        local comboPoints = (player.comboCount - 4) * 10  -- Start counting at 10 points for combo of 5
+    local comboCount = ComboManager.getComboCount()
+    if comboCount >= 5 then
+        -- Add combo points to score
+        local comboPoints = (comboCount - 4) * 10  -- Start counting at 10 points for combo of 5
         score = score + comboPoints
     end
-
     -- Check for game over
     if player.health <= 0 then
         gameOver = true
@@ -638,6 +645,7 @@ function love.draw()
         end
     end
     xpManager:draw()
+    ComboManager.draw()
 
     love.graphics.pop()
 

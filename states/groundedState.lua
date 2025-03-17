@@ -40,10 +40,6 @@ function GroundedState:update(dt)
     -- Apply velocities to position
     self.player.x = self.player.x + self.player.velocity.x * dt
         
-    -- Reset combo if on ground with active combo
-    if self.player.comboCount > 0 then
-        self.player:resetCombo()
-    end
 end
 
 function GroundedState:onLeftGround()
@@ -71,8 +67,6 @@ end
 function GroundedState:enemyCollision(enemy)
     -- Enemy hits player - player takes damage
     self.player:takeDamage()
-    -- Reset combo when hit
-    self.player:resetCombo()
 end
 
 function GroundedState:draw()

@@ -102,14 +102,11 @@ function DashingState:enemyCollision(enemy)
     enemy:stun()
     -- Fire enemy kill event with combo count
     self.events.fire("enemyKill", {
-        comboCount = self.player.comboCount,
         enemy = enemy
     })
     -- Refresh the player's dash
     self.player:refreshJumps() -- CORRECTED METHOD NAME
-    
-    -- Increment combo counter
-    self.player:incrementCombo()
+
 end
 
 -- Update DashingState's draw method to incorporate jump-based colors

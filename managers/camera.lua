@@ -40,9 +40,7 @@ function Camera:new(player)
     self.shakeDecay = 5
     
     -- Register event listeners
-    Events.on("playerDash", function(data) self:onPlayerDash(data) end)
-    Events.on("enemyKill", function(data) self:onEnemyKill(data) end)
-    Events.on("playerHit", function(data) self:onPlayerHit(data) end)
+    --Events.on("playerHit", function(data) self:onPlayerHit(data) end)
     
     return self
 end
