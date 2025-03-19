@@ -53,7 +53,19 @@ local POWERUP_DEFINITIONS = {
         description = "Increase combo duration by 1 second",
         icon = "star",
         color = {1, 0.5, 0.2}
-    }
+    },
+    TIME_DILATION = {
+        name = "Time Dilation",
+        description = "Increase initial time slowdown when aiming",
+        icon = "clock-slow",
+        color = {0.7, 0.3, 1.0}
+    },
+    TIME_EXTENSION = {
+        name = "Time Extension",
+        description = "Extend duration of time slowdown effect",
+        icon = "hourglass",
+        color = {1.0, 0.5, 0.8}
+    },
 }
 
 function LevelUpMenu:new(player)

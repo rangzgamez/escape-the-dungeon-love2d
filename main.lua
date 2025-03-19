@@ -63,12 +63,7 @@ local function setupEventListeners()
     -- Clear any existing listeners first
     Events.clearAll()
     Events.on("dragStart", function(data)
-        if pauseWhileDragging then
-            timeManager:setTimeScale(0)
-        elseif slowDownWhileDragging then
-            timeManager:setTimeScale(slowDownFactor)
-        end
-        
+        timeManager:startDragSlowdown()
         -- Clear any camera shake
         camera:clearShake()
 
@@ -81,16 +76,12 @@ local function setupEventListeners()
         ComboManager.onPlayerLanded()
     end)
     Events.on("dragEnd", function(data)
-        if pauseWhileDragging or slowDownWhileDragging then
-            timeManager:setTimeScale(1, true)
-        end
+        timeManager:endDragSlowdown()
         player:onDragEnd(data)
     end)
     
     Events.on("dragCancel", function()
-        if pauseWhileDragging or slowDownWhileDragging then
-            timeManager:setTimeScale(1, true)
-        end
+        timeManager:endDragSlowdown()
     end)
     
     Events.on("playerDashStarted", function(data)
@@ -560,36 +551,16 @@ end
 
 -- Helper function to handle settings UI interactions
 function handleSettingsUIClick(x, y)
-    -- Check if clicking on slow down option
-    if x >= 10 and x <= 30 and y >= 130 and y <= 150 then
-        slowDownWhileDragging = not slowDownWhileDragging
-        -- Disable pause if slow down is enabled
-        if slowDownWhileDragging then
-            pauseWhileDragging = false
-        end
-        return true
-    end
-    
-    -- Check if clicking on pause option
-    if x >= 10 and x <= 30 and y >= 170 and y <= 190 then
-        pauseWhileDragging = not pauseWhileDragging
-        -- Disable slow down if pause is enabled
-        if pauseWhileDragging then
-            slowDownWhileDragging = false
-        end
-        return true
-    end
-    
-    -- Check if clicking on debug options
+    -- Debug options (if debug mode is enabled)
     if debugMode then
         -- Disable particles option
-        if x >= 10 and x <= 30 and y >= 210 and y <= 230 then
+        if x >= 10 and x <= 30 and y >= 170 and y <= 190 then
             disableParticles = not disableParticles
             return true
         end
         
         -- Show collision bounds option
-        if x >= 10 and x <= 30 and y >= 240 and y <= 260 then
+        if x >= 10 and x <= 30 and y >= 200 and y <= 220 then
             showCollisionBounds = not showCollisionBounds
             return true
         end
@@ -597,7 +568,6 @@ function handleSettingsUIClick(x, y)
     
     return false -- Click wasn't on a settings UI element
 end
-
 
 -- Draw the game
 function love.draw()
@@ -703,56 +673,46 @@ function love.draw()
         love.graphics.rectangle("fill", 5, 100, 200, 200)
         love.graphics.setColor(0.5, 0.5, 0.6)
         love.graphics.rectangle("line", 5, 100, 200, 200)
-
+    
         love.graphics.setColor(1, 1, 1)
         love.graphics.print("GAME SETTINGS", 10, 105)
-
-        -- Slow down option
-        love.graphics.setColor(0.3, 0.3, 0.4)
-        love.graphics.rectangle("fill", 10, 130, 20, 20)
-        if slowDownWhileDragging then
-            love.graphics.setColor(0, 1, 0)
-            love.graphics.rectangle("fill", 13, 133, 14, 14)
-        end
-        love.graphics.setColor(1, 1, 1)
-        love.graphics.print("Slow down while dragging", 35, 130)
-
-        -- Pause option
-        love.graphics.setColor(0.3, 0.3, 0.4)
-        love.graphics.rectangle("fill", 10, 170, 20, 20)
-        if pauseWhileDragging then
-            love.graphics.setColor(0, 1, 0)
-            love.graphics.rectangle("fill", 13, 173, 14, 14)
-        end
-        love.graphics.setColor(1, 1, 1)
-        love.graphics.print("Pause while dragging", 35, 170)
         
-        -- Disable particles option (debug)
+        -- Info about the dynamic drag slowdown
+        love.graphics.setColor(0.8, 0.8, 1)
+        love.graphics.print("Drag Slowdown: Active", 10, 135)
+        love.graphics.setColor(0.7, 0.7, 0.8)
+        love.graphics.print("Time slows when aiming", 20, 155)
+        love.graphics.print("and speeds up gradually", 20, 170)
+        
+        -- Debug options section (only if debug mode is enabled)
         if debugMode then
+            love.graphics.setColor(0.8, 0.8, 0.8)
+            love.graphics.print("DEBUG OPTIONS:", 10, 200)
+            
+            -- Disable particles option
             love.graphics.setColor(0.3, 0.3, 0.4)
-            love.graphics.rectangle("fill", 10, 210, 20, 20)
+            love.graphics.rectangle("fill", 10, 225, 20, 20)
             if disableParticles then
                 love.graphics.setColor(0, 1, 0)
-                love.graphics.rectangle("fill", 13, 213, 14, 14)
+                love.graphics.rectangle("fill", 13, 228, 14, 14)
             end
             love.graphics.setColor(1, 1, 1)
-            love.graphics.print("Disable particle effects (F2)", 35, 210)
+            love.graphics.print("Disable particle effects (F2)", 35, 225)
             
             -- Show collision bounds option
             love.graphics.setColor(0.3, 0.3, 0.4)
-            love.graphics.rectangle("fill", 10, 240, 20, 20)
+            love.graphics.rectangle("fill", 10, 255, 20, 20)
             if showCollisionBounds then
                 love.graphics.setColor(0, 1, 0)
-                love.graphics.rectangle("fill", 13, 243, 14, 14)
+                love.graphics.rectangle("fill", 13, 258, 14, 14)
             end
             love.graphics.setColor(1, 1, 1)
-            love.graphics.print("Show collision bounds (F3)", 35, 240)
+            love.graphics.print("Show collision bounds (F3)", 35, 255)
         end
-
+    
         -- Instructions
         love.graphics.setColor(0.8, 0.8, 0.8)
-        love.graphics.print("Tap checkboxes to toggle options", 10, 270)
-        love.graphics.print("Press 'S' to close settings", 10, 290)
+        love.graphics.print("Press 'S' to close settings", 10, 285)
     end
     love.graphics.setColor(1, 0.3, 0.3)
     love.graphics.print("Lava: " .. math.floor(distanceFromLava) .. "px", 10, 70)
