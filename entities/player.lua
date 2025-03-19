@@ -354,8 +354,31 @@ function Player:applyPowerup(type)
         self.shieldActive = true
         self.shieldHealth = self.powerupLevels[type] -- Shield health scales with level
 
-    end
     
+    elseif type == "TIME_DILATION" then
+        -- Increase the initial slowdown effect (slow time more when starting a drag)
+        -- For each level, make initial slowdown 15% stronger
+        local factor = 0.85  -- 0.85 means 15% slower
+        -- Fire event to update the TimeManager
+        Events.fire("playerTimeControlChanged", {
+            player = self,
+            effect = "initialSlowdown",
+            factor = factor,
+            level = self.powerupLevels[type]
+        })
+        
+    elseif type == "TIME_EXTENSION" then
+        -- Extend the duration of the slowdown effect
+        -- For each level, add 0.3 seconds to the duration
+        local amount = 0.3 * self.powerupLevels[type]
+        -- Fire event to update the TimeManager
+        Events.fire("playerTimeControlChanged", {
+            player = self,
+            effect = "duration",
+            amount = amount,
+            level = self.powerupLevels[type]
+        })
+    end
     -- Fire powerup applied event
     Events.fire("playerPowerupApplied", {
         player = self,
