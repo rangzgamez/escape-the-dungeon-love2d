@@ -16,7 +16,15 @@ function CollisionManager.removeEntity(entity)
         end
     end
 end
-
+-- Check if an entity is already registered
+function CollisionManager.isRegistered(entity)
+    for _, e in ipairs(entities) do
+        if e == entity then
+            return true
+        end
+    end
+    return false
+end
 -- Clear all entities
 function CollisionManager.clear()
     entities = {}
